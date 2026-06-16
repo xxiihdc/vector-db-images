@@ -1,0 +1,13 @@
+{
+  "name": "media-vector-index",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI-first scaffold for indexing images and videos into an agent-friendly vector catalog.",
+  "type": "module",
+  "scripts": {
+    "docs:check": "node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\""
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

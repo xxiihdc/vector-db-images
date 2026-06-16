@@ -1,5 +1,6 @@
 installed:
 - git
+- checklist-reminder
 settings:
   auto_execute_hooks: true
 hooks:
@@ -83,6 +84,13 @@ hooks:
     prompt: Commit constitution changes?
     description: Auto-commit after constitution update
     condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after constitution output
+    condition: null
   after_specify:
   - extension: git
     command: speckit.git.commit
@@ -90,6 +98,13 @@ hooks:
     optional: true
     prompt: Commit specification changes?
     description: Auto-commit after specification
+    condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after specification output
     condition: null
   after_clarify:
   - extension: git
@@ -99,6 +114,13 @@ hooks:
     prompt: Commit clarification changes?
     description: Auto-commit after spec clarification
     condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after clarification output
+    condition: null
   after_plan:
   - extension: git
     command: speckit.git.commit
@@ -106,6 +128,13 @@ hooks:
     optional: true
     prompt: Commit plan changes?
     description: Auto-commit after implementation planning
+    condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after planning output
     condition: null
   after_tasks:
   - extension: git
@@ -115,6 +144,13 @@ hooks:
     prompt: Commit task changes?
     description: Auto-commit after task generation
     condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after tasks output
+    condition: null
   after_implement:
   - extension: git
     command: speckit.git.commit
@@ -122,6 +158,13 @@ hooks:
     optional: true
     prompt: Commit implementation changes?
     description: Auto-commit after implementation
+    condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after implementation output
     condition: null
   after_checklist:
   - extension: git
@@ -131,6 +174,13 @@ hooks:
     prompt: Commit checklist changes?
     description: Auto-commit after checklist generation
     condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after checklist output
+    condition: null
   after_analyze:
   - extension: git
     command: speckit.git.commit
@@ -139,6 +189,13 @@ hooks:
     prompt: Commit analysis results?
     description: Auto-commit after analysis
     condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after analysis output
+    condition: null
   after_taskstoissues:
   - extension: git
     command: speckit.git.commit
@@ -146,4 +203,11 @@ hooks:
     optional: true
     prompt: Commit after syncing issues?
     description: Auto-commit after tasks-to-issues conversion
+    condition: null
+  - extension: checklist-reminder
+    command: speckit.checklist.remind
+    enabled: true
+    optional: false
+    prompt: Update docs/mvp-checklist.md before finishing this output.
+    description: Checklist reminder after tasks-to-issues output
     condition: null

@@ -1,0 +1,61 @@
+schema_version: "1.0"
+
+extension:
+  id: checklist-reminder
+  name: "Checklist Reminder"
+  version: "1.0.0"
+  description: "Remind agents to update the MVP checklist after Spec Kit command output"
+  author: local
+  license: MIT
+
+requires:
+  speckit_version: ">=0.2.0"
+
+provides:
+  commands:
+    - name: speckit.checklist.remind
+      file: commands/speckit.checklist.remind.md
+      description: "Remind the agent to update docs/mvp-checklist.md before finishing"
+
+hooks:
+  after_constitution:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after constitution output"
+  after_specify:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after specification output"
+  after_clarify:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after clarification output"
+  after_plan:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after planning output"
+  after_tasks:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after tasks output"
+  after_implement:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after implementation output"
+  after_checklist:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after checklist output"
+  after_analyze:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after analysis output"
+  after_taskstoissues:
+    command: speckit.checklist.remind
+    optional: false
+    description: "Remind checklist update after tasks-to-issues output"
+
+tags:
+  - "checklist"
+  - "workflow"
+  - "mvp"

@@ -4,6 +4,15 @@
 
 Media Vector Index
 
+## Giao tiếp
+
+- Luôn gọi người dùng là Đức.
+- Sau khi hoàn thành một tác vụ, phần output cuối phải ghi rõ:
+  - tools đã sử dụng
+  - skills đã sử dụng
+  - agents đã sử dụng
+- Nếu không dùng skill hoặc agent phụ trợ nào, phải ghi rõ là không sử dụng.
+
 ## Mục tiêu
 
 Xây dựng một công cụ local-first để index image và video vào một catalog vector-oriented có thể search, để các AI agent về sau có thể:
@@ -76,6 +85,16 @@ Trước khi implement, luôn giữ các file sau được cập nhật:
 - `docs/product.md`
 - `docs/architecture.md`
 - `docs/backlog.md`
+- `docs/mvp-checklist.md`
+
+## Checklist vận hành
+
+- File checklist chính cho MVP là `docs/mvp-checklist.md`.
+- Mỗi khi hoàn thành một task, phải cập nhật checklist này ngay trong cùng lần làm việc.
+- Nếu một task được break nhỏ hơn để dễ triển khai, thêm sub-task hoặc tách lại wording trong checklist trước khi tiếp tục.
+- Không coi task là xong nếu code đã đổi nhưng checklist chưa được cập nhật.
+- Repo có local Spec Kit hook `speckit.checklist.remind` để nhắc cập nhật checklist sau các `after_*` workflow outputs.
+- Hook này chỉ bao phủ các command trong workflow Spec Kit; với các output ngoài workflow đó, agent vẫn phải tự tuân thủ quy ước cập nhật checklist.
 
 ## Thứ tự thực hiện
 

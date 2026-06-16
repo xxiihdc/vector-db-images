@@ -60,6 +60,12 @@ Chưa nên implement indexing pipeline, UI, hoặc embedding provider cho đến
 - Primary: Node.js CLI
 - Optional về sau: Electron shell cho asset browsing
 
+### Retrieval surface đầu tiên
+
+- Chốt dùng `CLI only` cho MVP đầu tiên.
+- Chưa thêm local HTTP API ở giai đoạn project setup.
+- Agent-facing retrieval ban đầu được expose qua CLI commands ổn định, rồi mới cân nhắc tách thêm local HTTP API khi có nhu cầu integration rõ ràng.
+
 ### Candidate storage
 
 - metadata catalog: SQLite
@@ -68,14 +74,20 @@ Chưa nên implement indexing pipeline, UI, hoặc embedding provider cho đến
 
 ### Candidate indexing model
 
-- image unit: một asset cho mỗi file, có thể kèm derived captions/tags
-- video unit: một asset cho mỗi file cộng với segment-level records
+- image unit: một asset cho mỗi file, semantic retrieval ban đầu ưu tiên embedding trực tiếp từ image
+- video unit: một asset cho mỗi file cộng với segment-level records, semantic retrieval ban đầu ưu tiên embedding từ keyframe hoặc segment representation
 - segment identity nên giữ lại:
   - source path
   - start time
   - end time
-  - transcript excerpt
+  - transcript excerpt nếu có
   - preview frame path
+
+### Transcript và caption cho MVP
+
+- Transcript/caption không phải điều kiện tiên quyết để tạo vector index ở MVP đầu tiên.
+- Nếu media không có sidecar transcript/caption, hệ thống vẫn phải index được vào vector DB từ chính image hoặc video representation.
+- Sidecar transcript/caption là enrichment tùy chọn để tăng chất lượng retrieval, không phải dependency bắt buộc của bản đầu.
 
 ## Tài liệu bắt buộc
 

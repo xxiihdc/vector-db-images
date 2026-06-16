@@ -14,6 +14,8 @@
 - [ ] define asset schema
 - [ ] define segment schema
 - [ ] define retrieval output schema
+- [ ] define embedding provider interface cho local-first execution
+- [ ] define shot-aware segmentation config và max segment duration rule
 
 ## Phase 2: Ingestion
 
@@ -22,16 +24,18 @@
 - [ ] extract image metadata
 - [ ] extract video metadata
 - [ ] derive segment windows
+- [ ] derive visual representation cho asset và segment để phục vụ embedding
 
 ## Phase 3: Enrichment
 
-- [ ] import transcript sidecars
-- [ ] attach captions hoặc descriptions
+- [ ] import transcript sidecars nếu có
+- [ ] attach captions hoặc descriptions như enrichment layer
 - [ ] normalize textual context cho từng asset và segment
 
 ## Phase 4: Search
 
 - [ ] implement embedding provider abstraction
+- [ ] implement vector indexing path không phụ thuộc transcript/caption
 - [ ] implement local search path
 - [ ] implement agent-facing retrieval command
 

@@ -10,11 +10,14 @@ Quy ước:
 
 ## Phase 0: Scope And Decisions
 
-- [ ] Chốt phạm vi MVP và định nghĩa "done" cho bản đầu tiên
-- [ ] Chốt retrieval surface đầu tiên: CLI only hay CLI + local HTTP API
-- [ ] Chốt nguồn transcript/caption đầu tiên: sidecar import trước, chưa generate tự động
-- [ ] Chốt embedding strategy đầu tiên: giữ abstraction, tích hợp 1 provider ban đầu
-- [ ] Chốt storage strategy đầu tiên: SQLite catalog + vector backend local sau repository interface
+- [x] Chốt phạm vi MVP và định nghĩa "done" cho bản đầu tiên
+- [x] Chốt retrieval surface đầu tiên: CLI only hay CLI + local HTTP API
+- [x] Chốt transcript/caption là enrichment tùy chọn; MVP vẫn phải vector-index được khi không có sidecar
+- [x] Chốt embedding strategy đầu tiên: giữ abstraction; provider đầu tiên là multimodal embedding local-first trên Apple Silicon, index trực tiếp image và video segment representation
+- [x] Chốt storage strategy đầu tiên: SQLite catalog + vector backend local sau repository interface
+- [x] Chốt video segmentation baseline: shot-aware segmentation trước, fallback bằng max-duration split để giữ độ chi tiết
+- [x] Chốt deterministic asset identity baseline
+- [x] Chốt retrieval output contract v1 cho agent
 
 ## Phase 1: Core Design
 
@@ -44,7 +47,7 @@ Quy ước:
 
 ## Phase 4: Transcript And Segments
 
-- [ ] Implement transcript sidecar discovery và import
+- [ ] Implement transcript sidecar discovery và import nếu có
 - [ ] Định nghĩa rule tạo video segment ban đầu
 - [ ] Implement segment generation từ transcript hoặc time window fallback
 - [ ] Chuẩn hóa text context cho asset và segment trước khi embed
@@ -53,14 +56,15 @@ Quy ước:
 ## Phase 5: Search And Retrieval
 
 - [ ] Tích hợp embedding provider abstraction với 1 provider hoạt động được
+- [ ] Implement vector indexing path cho image và video không phụ thuộc transcript/caption
 - [ ] Implement local semantic search cho asset và segment
 - [ ] Implement filter cơ bản theo media type, path, và time range
 - [ ] Implement agent-facing retrieval command
 
 ## Phase 6: Validation And Docs
 
-- [ ] Tạo fixture dataset nhỏ để test end-to-end image + video + transcript
-- [ ] Viết test cho identity, re-index, segment creation, transcript linking, retrieval output
+- [ ] Tạo fixture dataset nhỏ để test end-to-end image + video, kèm transcript sidecar optional
+- [ ] Viết test cho identity, re-index, segment creation, transcript linking optional, retrieval output
 - [ ] Cập nhật `README.md` với quickstart và workflow CLI
 - [ ] Cập nhật `docs/product.md` theo các quyết định MVP đã chốt
 - [ ] Cập nhật `docs/architecture.md` theo storage boundary, indexing boundary, retrieval contract

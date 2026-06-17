@@ -24,15 +24,17 @@ Quy ước:
 
 ## Phase 1: Core Design
 
-- [x] Thiết kế folder layout cho các layer `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
+- [] Thiết kế folder layout cho các layer `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
 - [ ] Thiết kế cấu trúc config file
 - [ ] Định nghĩa schema cho asset record
 - [ ] Định nghĩa schema cho embedding record
 - [ ] Định nghĩa schema output cho retrieval result
 - [ ] Định nghĩa deterministic asset identity từ `PHAsset.localIdentifier`
-- [ ] Định nghĩa boundary cho Photos permission và library access
+- [ ] Định nghĩa boundary cho Photos framework connection, Photos permission, và library access
+- [ ] Định nghĩa workflow connect trực tiếp tới Apple Photos trên macOS, không qua filesystem mirror
 - [ ] Định nghĩa strategy lấy image thumbnail và video representation hoàn toàn in-memory
 - [ ] Định nghĩa strategy xử lý asset gốc nằm trên iCloud
+- [ ] Định nghĩa workflow ghi kết quả trở lại album `AI Search Results` trong Photos
 - [ ] Định nghĩa chiến lược detect thay đổi asset để re-index an toàn
 
 ## Phase 2: Scaffold
@@ -40,11 +42,15 @@ Quy ước:
 - [ ] Scaffold package Node.js CLI
 - [ ] Tạo các module rỗng theo kiến trúc đã chốt
 - [ ] Tạo lệnh CLI khởi tạo project config và local storage
+- [ ] Tạo lệnh CLI kiểm tra kết nối trực tiếp tới Apple Photos
 - [ ] Tạo lệnh CLI scan thư viện Photos và liệt kê asset hợp lệ
+- [ ] Tạo lệnh CLI/flow debug để kiểm tra quyền Photos hiện tại và trạng thái truy cập library
 
 ## Phase 3: Ingestion
 
-- [ ] Implement Photos permission flow và xác thực popup TCC
+- [ ] Implement connect path vào Apple Photos qua Photos framework trên macOS
+- [ ] Implement Photos permission flow và xác thực popup TCC xuất hiện đúng
+- [ ] Implement đọc danh sách asset từ Apple Photos sau khi quyền được cấp
 - [ ] Implement access path cho asset gốc nằm trên iCloud qua Photos framework
 - [ ] Implement thumbnail extraction `224x224` và video representation chạy hoàn toàn in-memory
 - [ ] Implement repository interface cho local DB và vector layer
@@ -56,12 +62,15 @@ Quy ước:
 - [ ] Tích hợp embedding provider abstraction với 1 provider hoạt động được
 - [ ] Implement vector indexing path cho ảnh và video không tạo file tạm
 - [ ] Implement local semantic search cho asset image và video
+- [ ] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
 - [ ] Implement album output flow cho `AI Search Results`
+- [ ] Implement ghi asset match trở lại album trong Photos app
 - [ ] Implement lệnh CLI `search "..."` với output đủ cho debug
 
 ## Phase 5: Validation And Docs
 
 - [ ] Tạo fixture hoặc test strategy phù hợp cho Photos access, iCloud-backed assets, và in-memory representation flow
+- [ ] Verify end-to-end flow: connect Photos -> xin quyền -> index -> search -> album output
 - [ ] Viết test cho identity, re-index, zero-storage representation path, retrieval output, album update flow
 - [ ] Cập nhật `README.md` với quickstart và workflow CLI
 - [x] Cập nhật `docs/product.md` theo các quyết định MVP đã chốt

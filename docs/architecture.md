@@ -47,6 +47,48 @@ src/
   shared/
 ```
 
+## Layer-Internal Layout
+
+The first design pass should go one level deeper than top-level folders so the next scaffold step can create empty modules without inventing new boundaries.
+
+```text
+src/
+  cli/
+    commands/
+    formatters/
+  config/
+    defaults/
+    schema/
+  scanner/
+    contracts/
+    photos/
+    services/
+  extractor/
+    contracts/
+    image/
+    video/
+  enrichment/
+    contracts/
+    metadata/
+    normalizers/
+  indexer/
+    contracts/
+    pipeline/
+    records/
+  retriever/
+    contracts/
+    query/
+    album/
+  storage/
+    catalog/
+    vector/
+    migrations/
+  shared/
+    errors/
+    types/
+    utils/
+```
+
 ### Folder Responsibilities
 
 - `src/cli/`
@@ -85,6 +127,108 @@ src/
   - owns small cross-cutting utilities, shared types, and common helpers
   - should remain minimal so layer boundaries stay clear
 
+### Internal Responsibilities
+
+- `src/cli/commands/`
+  - contains CLI command handlers such as index, search, and diagnostics later
+  - stays thin and delegates business flow to core layers
+
+- `src/cli/formatters/`
+  - contains terminal output shaping for tables, debug payloads, and summaries
+  - keeps presentation logic out of retriever results and indexer records
+
+- `src/config/defaults/`
+  - defines default runtime values and album naming defaults
+  - remains pure and side-effect free
+
+- `src/config/schema/`
+  - defines config parsing and validation contracts
+  - becomes the single boundary for future user config files
+
+- `src/scanner/contracts/`
+  - defines asset candidate types emitted by Photos scanning
+  - keeps scanner outputs stable before representation extraction starts
+
+- `src/scanner/photos/`
+  - contains Photos-framework-specific adapters and permission-aware library access
+  - isolates macOS integration from the rest of the runtime
+
+- `src/scanner/services/`
+  - contains traversal and filtering flows built on top of Photos adapters
+  - decides which assets become extraction candidates
+
+- `src/extractor/contracts/`
+  - defines in-memory representation payloads for image and video extraction
+  - keeps extraction outputs independent from the embedding provider
+
+- `src/extractor/image/`
+  - contains image thumbnail request logic and related normalization
+  - never writes preview images to disk
+
+- `src/extractor/video/`
+  - contains lightweight video representation request logic
+  - stays focused on RAM-only access paths for retrieval inputs
+
+- `src/enrichment/contracts/`
+  - defines optional enrichment payloads and feature flags
+  - prevents enrichment from leaking into mandatory indexing state
+
+- `src/enrichment/metadata/`
+  - contains opt-in metadata-derived context later, such as dates or album hints
+  - is non-blocking for baseline indexing correctness
+
+- `src/enrichment/normalizers/`
+  - contains string or metadata normalization helpers used before indexing or retrieval
+  - keeps these transforms separate from scanner and storage
+
+- `src/indexer/contracts/`
+  - defines embedding-ready records and indexing job inputs
+  - becomes the boundary between extraction outputs and persistence writes
+
+- `src/indexer/pipeline/`
+  - contains orchestration from scanned asset to extracted representation to persisted vector
+  - owns flow coordination, not Photos access details
+
+- `src/indexer/records/`
+  - contains record builders for asset rows and embedding rows
+  - keeps deterministic identity mapping close to indexing logic
+
+- `src/retriever/contracts/`
+  - defines retrieval result payloads and ranking inputs
+  - stabilizes the search output contract for CLI and agents
+
+- `src/retriever/query/`
+  - contains query normalization, embedding lookup orchestration, and ranking handoff
+  - remains independent from album mutation side effects
+
+- `src/retriever/album/`
+  - contains `AI Search Results` album lookup and update orchestration
+  - keeps Photos output flow distinct from semantic matching logic
+
+- `src/storage/catalog/`
+  - contains lightweight asset record persistence keyed by `localIdentifier`
+  - must stay minimal and avoid becoming a Photos mirror
+
+- `src/storage/vector/`
+  - contains vector repository interfaces and local backend adapters
+  - hides backend choice from indexer and retriever
+
+- `src/storage/migrations/`
+  - contains local schema evolution helpers if the project needs them
+  - stays storage-specific and separate from runtime domain code
+
+- `src/shared/errors/`
+  - contains typed runtime errors and mapping helpers
+  - avoids ad hoc error classes scattered across layers
+
+- `src/shared/types/`
+  - contains truly cross-layer value objects only
+  - should not become a dump for layer-specific contracts
+
+- `src/shared/utils/`
+  - contains narrow helpers with no better home
+  - should stay small so core boundaries remain visible
+
 ## Layout Rules
 
 1. Each of the five core concerns gets exactly one primary top-level folder.
@@ -92,6 +236,9 @@ src/
 3. CLI concerns stay in `src/cli/` so the project remains CLI-first without coupling commands to indexing internals.
 4. Optional future surfaces such as HTTP or Electron should be added later as peer folders, not by reshaping the five core processing folders.
 5. No layer may persist thumbnail image files or preview caches to local disk in the MVP path.
+6. `scanner` stops at asset discovery and candidate shaping; thumbnail or representation bytes begin in `extractor`.
+7. `retriever/query` handles semantic matching, while `retriever/album` handles write-back into Photos so read and write concerns stay separable.
+8. `contracts/` folders define layer inputs and outputs locally; only truly shared primitives belong in `src/shared/`.
 
 ## Storage Shape
 

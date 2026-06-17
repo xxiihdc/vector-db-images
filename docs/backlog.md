@@ -5,11 +5,12 @@
 - [x] tạo `AGENTS.md`
 - [x] tạo bộ docs cơ bản
 - [x] tạo package metadata
-- [ ] chốt các runtime module ban đầu
+- [x] chốt folder layout nội bộ cho các runtime module ban đầu
 
 ## Phase 1: Core Scaffold
 
 - [x] define folder layout cho runtime code
+- [x] define folder layout nội bộ cho `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
 - [ ] define cấu trúc config file
 - [ ] define asset schema
 - [ ] define retrieval output schema

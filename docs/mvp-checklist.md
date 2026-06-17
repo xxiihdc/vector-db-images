@@ -24,7 +24,9 @@ Quy ước:
 
 ## Phase 1: Core Design
 
-- [] Thiết kế folder layout cho các layer `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
+- [x] Thiết kế folder layout cho các layer `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
+- [x] Chốt boundary nội bộ: `scanner` dừng ở asset discovery, `extractor` mới bắt đầu lấy representation bytes
+- [x] Chốt tách `retriever/query` khỏi `retriever/album` để read path và write-back path không dính nhau
 - [ ] Thiết kế cấu trúc config file
 - [ ] Định nghĩa schema cho asset record
 - [ ] Định nghĩa schema cho embedding record

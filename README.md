@@ -68,4 +68,15 @@ src/
   shared/
 ```
 
+Layout nội bộ cho các layer cũng đã được chốt để bước scaffold sau không phải đoán lại boundary:
+
+```text
+src/
+  scanner/{contracts,photos,services}
+  extractor/{contracts,image,video}
+  enrichment/{contracts,metadata,normalizers}
+  indexer/{contracts,pipeline,records}
+  retriever/{contracts,query,album}
+```
+
 Chi tiết trách nhiệm từng folder được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).

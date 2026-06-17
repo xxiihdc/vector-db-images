@@ -50,12 +50,12 @@ Quy ước:
 
 ## Phase 2: Scaffold
 
-- [ ] Scaffold package Node.js CLI
-- [ ] Tạo các module rỗng theo kiến trúc đã chốt
-- [ ] Tạo lệnh CLI khởi tạo project config và local storage
-- [ ] Tạo lệnh CLI kiểm tra kết nối trực tiếp tới Apple Photos
-- [ ] Tạo lệnh CLI scan thư viện Photos và liệt kê asset hợp lệ
-- [ ] Tạo lệnh CLI/flow debug để kiểm tra quyền Photos hiện tại và trạng thái truy cập library
+- [x] Scaffold package Node.js CLI
+- [x] Tạo các module rỗng theo kiến trúc đã chốt
+- [x] Tạo lệnh CLI khởi tạo project config và local storage
+- [x] Tạo lệnh CLI kiểm tra kết nối trực tiếp tới Apple Photos
+- [x] Tạo lệnh CLI scan thư viện Photos và liệt kê asset hợp lệ
+- [x] Tạo lệnh CLI/flow debug để kiểm tra quyền Photos hiện tại và trạng thái truy cập library
 
 ## Phase 3: Ingestion
 

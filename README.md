@@ -4,7 +4,7 @@ Project scaffold local-first cho semantic search ảnh và video trong Apple Pho
 
 ## Trạng thái
 
-Đã hoàn tất phần quyết định phạm vi và core design cho MVP. Bước kế tiếp ưu tiên là `Phase 2: Scaffold` theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
+Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, và `Phase 2: Scaffold`. Bước kế tiếp ưu tiên là `Phase 3: Ingestion` theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
 
 ## Mục tiêu
 
@@ -49,7 +49,24 @@ Vì vậy, deliverable đầu tiên nên là một indexing và search core ổn
 
 ## Bước Tiếp Theo
 
-Thực hiện `Phase 2: Scaffold`: scaffold CLI package, tạo module rỗng theo kiến trúc đã chốt, và thêm các lệnh nền để khởi tạo config, kiểm tra Photos access, và scan thư viện ở mức khung.
+Thực hiện `Phase 3: Ingestion`: nối Python bridge với Photos framework thật, xin quyền TCC, đọc asset từ Apple Photos, và thay payload scaffold bằng dữ liệu thực cho flow scan và debug.
+
+## Scaffold CLI
+
+Scaffold phase 2 hiện đã có CLI chạy được với command surface ban đầu:
+
+```bash
+node ./src/cli/main.js init
+node ./src/cli/main.js photos check
+node ./src/cli/main.js photos scan
+node ./src/cli/main.js photos debug
+```
+
+Ghi chú:
+
+- `init` tạo `media-vector-index.config.json` và local storage placeholder trong `.data/`
+- các lệnh `photos *` đã nối được sang Python bridge placeholder
+- direct Photos framework access, TCC flow, và asset traversal thật sẽ được implement ở `Phase 3: Ingestion`
 
 ## Folder Layout Đã Chốt
 

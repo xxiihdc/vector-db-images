@@ -1,0 +1,11 @@
+export function buildHelpText() {
+  return [
+    "Media Vector Index CLI",
+    "",
+    "Usage:",
+    "  mvi init [--force]",
+    "  mvi photos check [--json]",
+    "  mvi photos scan [--json]",
+    "  mvi photos debug [--json]",
+  ].join("\n");
+}

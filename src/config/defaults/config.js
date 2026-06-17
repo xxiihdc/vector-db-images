@@ -1,0 +1,39 @@
+export const DEFAULT_CONFIG_FILE_NAME = "media-vector-index.config.json";
+
+export const DEFAULT_CONFIG = Object.freeze({
+  schema_version: 1,
+  app: {
+    results_album_name: "AI Search Results",
+    log_level: "info",
+  },
+  storage: {
+    root_dir: ".data",
+    catalog_db_path: ".data/catalog.sqlite",
+    vector_db_path: ".data/vectors.sqlite",
+  },
+  scanner: {
+    include_images: true,
+    include_videos: true,
+    batch_size: 200,
+  },
+  extractor: {
+    image_thumbnail_size: 224,
+    video_strategy: "poster-frame",
+    allow_network_access: true,
+  },
+  indexer: {
+    write_batch_size: 64,
+    reindex_mode: "incremental",
+  },
+  retriever: {
+    default_limit: 50,
+    album_write_mode: "replace",
+  },
+  embedding: {
+    provider: "local",
+    model: "TBD",
+  },
+  debug: {
+    save_diagnostics: false,
+  },
+});

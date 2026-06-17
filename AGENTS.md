@@ -32,7 +32,9 @@ Mục tiêu cốt lõi của bản đầu:
 
 Hiện tại đã hoàn tất `Phase 0: Scope And Decisions` và `Phase 1: Core Design`.
 
-Pha đang chuẩn bị bắt đầu là `Phase 2: Scaffold`.
+`Phase 2: Scaffold` đã hoàn tất.
+
+Pha đang chuẩn bị bắt đầu là `Phase 3: Ingestion`.
 
 ## Nguyên tắc làm việc
 

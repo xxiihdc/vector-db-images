@@ -1,19 +1,8 @@
-import { createHash } from "node:crypto";
 import { scanLibrary } from "../../scanner/services/scan-service.js";
 import { extractPhotosRepresentations } from "../../scanner/photos/bridge-client.js";
+import { createEmbeddingProvider } from "../../embedding/create-provider.js";
 import { buildAssetRecord } from "../records/asset-record.js";
 import { buildEmbeddingRecord } from "../records/embedding-record.js";
-
-function hashBytesToPlaceholderVector(bytes, dimensions = 16) {
-  const digest = createHash("sha256").update(bytes).digest();
-  const vector = [];
-
-  for (let index = 0; index < dimensions; index += 1) {
-    vector.push(Number((digest[index % digest.length] / 255).toFixed(6)));
-  }
-
-  return vector;
-}
 
 function decodeRepresentationBytes(representation) {
   if (!representation?.bytes_base64) {
@@ -128,6 +117,7 @@ async function buildCachedIndexState({
 export function createIndexPipeline({
   scanLibraryFn = scanLibrary,
   extractRepresentationsFn = extractPhotosRepresentations,
+  createEmbeddingProviderFn = createEmbeddingProvider,
   catalogRepository,
   vectorRepository,
   now = () => new Date().toISOString(),
@@ -160,12 +150,14 @@ export function createIndexPipeline({
       })
     );
     const timestamp = now();
+    const embeddingProvider = createEmbeddingProviderFn({ config });
     const scannedAssetsById = new Map(
       (scanState.assets ?? []).map((asset) => [asset.local_identifier, asset])
     );
     const persistedAssets = [];
     const persistedEmbeddings = [];
     const skippedRepresentations = [];
+    const pendingRepresentations = [];
 
     for (const representation of extractionState.representations ?? []) {
       if (!shouldPersistRepresentation(representation)) {
@@ -198,14 +190,44 @@ export function createIndexPipeline({
         continue;
       }
 
-      const persistedAsset = await catalogRepository.upsertAsset(assetRecord);
-      const placeholderVector = hashBytesToPlaceholderVector(bytes);
+      pendingRepresentations.push({
+        representation,
+        persistedAsset: await catalogRepository.upsertAsset(assetRecord),
+      });
+    }
+
+    const embeddingResults = await embeddingProvider.embedRepresentations({
+      representations: pendingRepresentations.map(({ representation }) => representation),
+    });
+    const embeddingResultsByKey = new Map(
+      embeddingResults.map((embedding) => [
+        `${embedding.local_identifier}::${embedding.representation_kind}`,
+        embedding,
+      ])
+    );
+
+    for (const { representation, persistedAsset } of pendingRepresentations) {
+      const resultKey = `${representation.local_identifier}::${representation.representation_kind}`;
+      const embeddingResult = embeddingResultsByKey.get(resultKey);
+
+      if (!embeddingResult || embeddingResult.status !== "ready" || !embeddingResult.vector) {
+        skippedRepresentations.push({
+          local_identifier: representation.local_identifier,
+          asset_type: representation.asset_type,
+          representation_kind: representation.representation_kind,
+          status: embeddingResult?.error_code ?? embeddingResult?.status ?? "embedding-missing",
+        });
+        continue;
+      }
+
       const embeddingRecord = buildEmbeddingRecord({
         asset_id: persistedAsset.asset_id,
         local_identifier: persistedAsset.local_identifier,
         representation_kind: representation.representation_kind,
-        embedding_provider: config.embedding?.provider ?? "local",
-        embedding_model: config.embedding?.model ?? "phase3-placeholder",
+        embedding_provider: embeddingResult.embedding_provider,
+        embedding_model: embeddingResult.embedding_model,
+        model_identity: embeddingResult.model_identity,
+        embedding_dimensions: embeddingResult.vector.length,
         source_fingerprint: persistedAsset.source_fingerprint,
         indexed_at: timestamp,
         extraction_signature: buildExtractionSignature({
@@ -217,7 +239,7 @@ export function createIndexPipeline({
 
       await vectorRepository.saveEmbedding({
         record: embeddingRecord,
-        vector: placeholderVector,
+        vector: embeddingResult.vector,
       });
 
       persistedAssets.push(persistedAsset.local_identifier);
@@ -246,8 +268,8 @@ export function createIndexPipeline({
       persisted_embeddings: persistedEmbeddings,
       skipped_representations: skippedRepresentations,
       notes: [
-        "Phase 3 persists deterministic placeholder vectors derived from in-memory representation bytes.",
-        "Real multimodal semantic embeddings remain a Phase 4 task behind the embedding provider abstraction.",
+        `Index persisted semantic vectors via ${embeddingProvider.modelIdentity}.`,
+        "Embedding generation stays in-memory and does not write thumbnails or video proxies to disk.",
       ],
     };
   }

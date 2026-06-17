@@ -28,8 +28,12 @@ export const DEFAULT_CONFIG = Object.freeze({
     album_write_mode: "replace",
   },
   embedding: {
-    provider: "local",
-    model: "TBD",
+    provider: "open-clip",
+    model: "ViT-B-32",
+    pretrained: "laion2b_s34b_b79k",
+    device: "auto",
+    normalize: true,
+    batch_size: 8,
   },
   debug: {
     save_diagnostics: false,

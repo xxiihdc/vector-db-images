@@ -1,3 +1,5 @@
 pyobjc-core>=10.3
 pyobjc-framework-Photos>=10.3
 pyobjc-framework-Quartz>=10.3
+Pillow>=10.4
+open_clip_torch>=2.26.1

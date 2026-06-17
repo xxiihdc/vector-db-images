@@ -291,8 +291,12 @@ For MVP setup, the runtime should load a single user-editable file named `media-
     "album_write_mode": "replace"
   },
   "embedding": {
-    "provider": "local",
-    "model": "TBD"
+    "provider": "open-clip",
+    "model": "ViT-B-32",
+    "pretrained": "laion2b_s34b_b79k",
+    "device": "auto",
+    "normalize": true,
+    "batch_size": 8
   },
   "debug": {
     "save_diagnostics": false
@@ -333,6 +337,7 @@ For MVP setup, the runtime should load a single user-editable file named `media-
 - `embedding`
   - owns provider selection and model identity only
   - provider-specific advanced settings can be added later under this section without changing other layers
+  - provider preflight should report missing runtime libraries separately and note when first-run checkpoint download may still require internet or a warmed local cache
 
 - `debug`
   - owns optional diagnostics toggles
@@ -536,7 +541,7 @@ For the current end of Phase 3, the runtime now includes:
 1. an `index` command that defaults to a local cache read from the catalog/vector repositories when cache data exists
 2. a `reindex` command that forces `scan -> extract -> normalize -> persist` using the existing Photos bridge plus JSON-backed repositories
 
-Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. Until the real provider lands, the persisted vector payload is a deterministic placeholder derived from in-memory representation bytes so the pipeline contract, storage shape, and re-index identity behavior can be validated without writing media to disk.
+Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
 
 For the first provider implementation, the execution mode is local-first on Apple Silicon hardware. The provider interface should remain portable so a remote embedding service can be added later without changing indexing or retrieval contracts.
 
@@ -833,7 +838,7 @@ Retrieval output v1 should be agent-oriented, stable, and easy to print in CLI o
   "match_evidence": {
     "query_text": "bãi biển lúc hoàng hôn",
     "strategy": "semantic-vector",
-    "model": "TBD",
+    "model": "ViT-B-32",
     "notes": [
       "top similarity match",
       "image-thumbnail representation"

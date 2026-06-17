@@ -11,6 +11,7 @@ import { runPhotosDebugCommand } from "./commands/photos-debug.js";
 import { runPhotosProbeOriginalsCommand } from "./commands/photos-probe-originals.js";
 import { runPhotosExtractCommand } from "./commands/photos-extract.js";
 import { runPhotosCapabilitiesCommand } from "./commands/photos-capabilities.js";
+import { runEmbeddingCapabilitiesCommand } from "./commands/embedding-capabilities.js";
 import { runIndexCommand } from "./commands/index.js";
 import { runReindexCommand } from "./commands/reindex.js";
 import {
@@ -66,6 +67,10 @@ async function dispatch(argv) {
 
   if (command === "photos" && subcommand === "extract") {
     return runPhotosExtractCommand({ cwd, args: rest });
+  }
+
+  if (command === "embedding" && subcommand === "capabilities") {
+    return runEmbeddingCapabilitiesCommand({ cwd, args: rest });
   }
 
   throw new AppError("Unknown command.", {

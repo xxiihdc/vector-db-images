@@ -13,5 +13,6 @@ export function buildHelpText() {
     "  mvi photos capabilities [--json]",
     "  mvi photos probe-originals [--json]",
     "  mvi photos extract [--limit 10] [--timeout-seconds 30] [--json]",
+    "  mvi embedding capabilities [--json]",
   ].join("\n");
 }

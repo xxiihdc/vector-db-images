@@ -15,6 +15,8 @@ import {
 } from "../src/storage/storage-layout.js";
 import { runInitCommand } from "../src/cli/commands/init.js";
 import { createIndexPipeline } from "../src/indexer/pipeline/index-pipeline.js";
+import { createEmbeddingProvider } from "../src/embedding/create-provider.js";
+import { buildCapabilityLines } from "../src/embedding/providers/open-clip/remediation.js";
 
 async function withTempDir(callback) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mvi-storage-test-"));
@@ -81,7 +83,7 @@ test("vector repository returns stale embedding as active fallback when ready ve
       asset_id: "asset:123",
       local_identifier: "A1B2C3/L0/001",
       representation_kind: "image-thumbnail",
-      embedding_provider: "local",
+      embedding_provider: "open-clip",
       embedding_model: "test-model",
       source_fingerprint: "fp:1",
       image_thumbnail_size: 224,
@@ -216,20 +218,33 @@ test("forced refresh reruns do not create duplicate assets or embeddings", async
       }),
       catalogRepository,
       vectorRepository,
+      createEmbeddingProviderFn: () => ({
+        modelIdentity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        async embedRepresentations({ representations }) {
+          return representations.map((representation, index) => ({
+            local_identifier: representation.local_identifier,
+            representation_kind: representation.representation_kind,
+            status: "ready",
+            vector: Array.from({ length: 8 }, (_, vectorIndex) =>
+              Number((index + vectorIndex / 10).toFixed(2))
+            ),
+            embedding_provider: "open-clip",
+            embedding_model: "ViT-B-32",
+            model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+          }));
+        },
+      }),
       now: () => "2026-06-17T12:00:00.000Z",
     });
 
-    const config = structuredClone(DEFAULT_CONFIG);
-    config.embedding.model = "phase3-placeholder";
-
     const firstRun = await pipeline.run({
-      config,
+      config: structuredClone(DEFAULT_CONFIG),
       limit: 2,
       timeoutSeconds: 30,
       useCache: false,
     });
     const secondRun = await pipeline.run({
-      config,
+      config: structuredClone(DEFAULT_CONFIG),
       limit: 2,
       timeoutSeconds: 30,
       useCache: false,
@@ -253,8 +268,10 @@ test("forced refresh reruns do not create duplicate assets or embeddings", async
     assert.equal(await vectorRepository.countEmbeddings(), 2);
     assert.equal(firstAssetEmbeddings.length, 1);
     assert.equal(secondAssetEmbeddings.length, 1);
-    assert.equal(firstAssetEmbeddings[0].embedding_dimensions, 16);
-    assert.equal(secondAssetEmbeddings[0].embedding_dimensions, 16);
+    assert.equal(firstAssetEmbeddings[0].embedding_provider, "open-clip");
+    assert.equal(firstAssetEmbeddings[0].embedding_model, "ViT-B-32");
+    assert.equal(firstAssetEmbeddings[0].embedding_dimensions, 8);
+    assert.equal(secondAssetEmbeddings[0].embedding_dimensions, 8);
   });
 });
 
@@ -286,7 +303,7 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
       asset_id: cachedAsset.asset_id,
       local_identifier: cachedAsset.local_identifier,
       representation_kind: "image-thumbnail",
-      embedding_provider: "local",
+      embedding_provider: "open-clip",
       embedding_model: DEFAULT_CONFIG.embedding.model,
       source_fingerprint: cachedAsset.source_fingerprint,
       indexed_at: "2026-06-17T12:00:00.000Z",
@@ -324,4 +341,113 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
     assert.equal(result.persisted_embedding_count, 1);
     assert.equal(result.persisted_assets[0], "A1B2C3/L0/001");
   });
+});
+
+test("embedding provider factory supports open clip and normalizes bridge output", async () => {
+  const provider = createEmbeddingProvider({
+    config: structuredClone(DEFAULT_CONFIG),
+    bridgeRunner: () => ({
+      ok: true,
+      embeddings: [
+        {
+          local_identifier: "A1B2C3/L0/001",
+          representation_kind: "image-thumbnail",
+          status: "ready",
+          vector: ["0.1", 0.2, 0.3],
+          embedding_provider: "open-clip",
+          embedding_model: "ViT-B-32",
+          model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        },
+      ],
+    }),
+  });
+
+  const results = await provider.embedRepresentations({
+    representations: [
+      {
+        local_identifier: "A1B2C3/L0/001",
+        representation_kind: "image-thumbnail",
+        asset_type: "image",
+        bytes_base64: Buffer.from("image-bytes").toString("base64"),
+      },
+    ],
+  });
+
+  assert.equal(provider.modelIdentity, "open-clip:ViT-B-32:laion2b_s34b_b79k");
+  assert.deepEqual(results[0].vector, [0.1, 0.2, 0.3]);
+});
+
+test("embedding provider unavailable error includes install guidance", async () => {
+  const provider = createEmbeddingProvider({
+    config: structuredClone(DEFAULT_CONFIG),
+    bridgeRunner: () => ({
+      ok: false,
+      errors: ["open_clip import failed: No module named 'open_clip'"],
+      requirements: [
+        {
+          kind: "python-library",
+          name: "open_clip_torch",
+          install_command: "python3 -m pip install open_clip_torch",
+          message: "Install OpenCLIP so the provider can auto-download and run pretrained CLIP checkpoints.",
+        },
+      ],
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      provider.embedRepresentations({
+        representations: [
+          {
+            local_identifier: "A1B2C3/L0/001",
+            representation_kind: "image-thumbnail",
+            asset_type: "image",
+            bytes_base64: Buffer.from("image-bytes").toString("base64"),
+          },
+        ],
+      }),
+    (error) => {
+      assert.equal(error.code, "EMBEDDING_PROVIDER_UNAVAILABLE");
+      assert.equal(error.details.requirements[0].name, "open_clip_torch");
+      assert.equal(
+        error.details.requirements[0].install_command,
+        "python3 -m pip install open_clip_torch"
+      );
+      return true;
+    }
+  );
+});
+
+test("embedding capability lines render concrete requirement guidance", async () => {
+  const lines = buildCapabilityLines({
+    provider: "open-clip",
+    model: "ViT-B-32",
+    pretrained: "laion2b_s34b_b79k",
+    platform: "Darwin",
+    capabilities: {
+      torch_available: true,
+      open_clip_available: false,
+      pillow_available: true,
+      runtime_device: "mps",
+      downloads_model_on_first_run: true,
+    },
+    requirements: [
+      {
+        kind: "python-library",
+        name: "open_clip_torch",
+        install_command: "python3 -m pip install open_clip_torch",
+        message: "Install OpenCLIP so the provider can auto-download and run pretrained CLIP checkpoints.",
+      },
+      {
+        kind: "network-or-cache",
+        name: "pretrained model download",
+        message: "Ensure the machine has internet access on first run so OpenCLIP can download pretrained weights, or warm the cache ahead of time.",
+      },
+    ],
+  });
+
+  assert.ok(
+    lines.some((line) => line.includes("Install: python3 -m pip install open_clip_torch"))
+  );
+  assert.ok(lines.some((line) => line.includes("pretrained model download")));
 });

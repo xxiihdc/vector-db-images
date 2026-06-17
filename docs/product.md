@@ -86,7 +86,7 @@ For the current ingestion milestone, the CLI exposes both an original-access pro
 
 Passing `--no-cache` on `index` forces the same refresh path as `reindex`.
 
-At this stage the persisted vectors are deterministic placeholders derived from in-memory representation bytes. This locks the ingestion contract and re-index identity path before the real local multimodal embedding provider is integrated in Phase 4.
+At this stage, the index pipeline is wired through a real embedding provider abstraction. The first configured path is `open-clip`, and its pretrained checkpoint can be downloaded automatically on first use when the machine has internet access.
 
 The working debug flow should start with a lightweight capability probe so dependency or runtime mismatches are separated from extraction logic failures early.
 

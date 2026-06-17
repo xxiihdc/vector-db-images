@@ -14,6 +14,7 @@
     "test:storage": "npm run config:check-sample && node --test tests/storage-repositories.test.js",
     "verify:storage": "npm run test:storage && node ./src/cli/main.js init --force",
     "verify:index-cache": "npm run test:storage && node ./scripts/verify-index-cache.js",
+    "verify:embedding": "node ./scripts/verify-embedding.js",
     "docs:check": "npm run config:check-sample && node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",
     "index": "node ./src/cli/main.js index",
     "reindex": "node ./src/cli/main.js reindex",

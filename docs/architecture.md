@@ -2,113 +2,144 @@
 
 ## First Principle
 
-Treat video as a collection of searchable segments, not only as a single file.
+Treat Apple Photos on macOS as the system of record for source images and videos, even when originals live in iCloud, while the local database stores only the minimum data needed for semantic search.
 
 ## Proposed Layers
 
 1. `scanner`
-   - walks folders
-   - filters supported file types
-   - computes stable source identity
+   - enumerates assets from Apple Photos
+   - handles Photos permission and library traversal
+   - resolves stable `PHAsset.localIdentifier`
+   - distinguishes image and video assets without relying on exported files
 
 2. `extractor`
-   - image metadata extraction
-   - video metadata extraction
-   - duration, stream, and frame reference extraction
+   - requests `224x224` thumbnails or lightweight video representations from Photos APIs
+   - keeps all extracted representations in-memory only
+   - extracts minimal technical metadata when needed for indexing
 
 3. `enrichment`
-   - transcript import when available
-   - caption import or generation later
-   - optional tagging
+   - prepares optional text hints or metadata-derived context later
+   - remains non-blocking for the base image and video indexing flow
 
 4. `indexer`
-   - converts assets and segments into normalized records
-   - writes catalog rows and vector rows
+   - converts Photos assets into normalized embedding records
+   - writes vector rows keyed by `localIdentifier`
 
 5. `retriever`
    - semantic search
-   - filters by media type or path
-   - returns agent-usable result payloads
+   - returns CLI-readable result payloads
+   - pushes matching assets into the Photos results album
+
+## Runtime Folder Layout
+
+The first runtime layout should keep CLI orchestration separate from media-processing layers while making each core concern obvious at a glance.
+
+```text
+src/
+  cli/
+  config/
+  scanner/
+  extractor/
+  enrichment/
+  indexer/
+  retriever/
+  storage/
+  shared/
+```
+
+### Folder Responsibilities
+
+- `src/cli/`
+  - owns command entrypoints, argument parsing, and output formatting
+  - calls into lower layers but should not absorb media-processing rules
+
+- `src/config/`
+  - owns project config loading, defaults, validation, and path resolution
+  - keeps runtime settings outside the five core layers
+
+- `src/scanner/`
+  - owns Photos library discovery and permission-aware asset enumeration
+  - emits normalized asset candidates before thumbnail extraction begins
+
+- `src/extractor/`
+  - owns thumbnail and lightweight video representation retrieval in-memory
+  - turns Photos assets into structured representation and minimal metadata payloads
+
+- `src/enrichment/`
+  - owns optional context enrichment that may improve retrieval later
+  - must not become a dependency for initial indexing correctness
+
+- `src/indexer/`
+  - owns normalization from asset candidates into embedding-ready records
+  - coordinates persistence-oriented indexing flow without becoming the Photos source of truth
+
+- `src/retriever/`
+  - owns search queries, ranking handoff, and result payload shaping
+  - owns album update orchestration for `AI Search Results`
+
+- `src/storage/`
+  - owns lightweight local database adapters
+  - stores vectors and `localIdentifier` mappings only, or the smallest debug metadata strictly required
+
+- `src/shared/`
+  - owns small cross-cutting utilities, shared types, and common helpers
+  - should remain minimal so layer boundaries stay clear
+
+## Layout Rules
+
+1. Each of the five core concerns gets exactly one primary top-level folder.
+2. Cross-cutting code goes to `config`, `storage`, or `shared`, not into an arbitrary core layer.
+3. CLI concerns stay in `src/cli/` so the project remains CLI-first without coupling commands to indexing internals.
+4. Optional future surfaces such as HTTP or Electron should be added later as peer folders, not by reshaping the five core processing folders.
+5. No layer may persist thumbnail image files or preview caches to local disk in the MVP path.
 
 ## Storage Shape
 
 ### Asset record
 
-- one row per media file
-- stores path, hash or fingerprint, media type, and technical metadata
-- stores or links to one or more embedding representations for semantic retrieval
-
-### Segment record
-
-- one row per searchable video segment
-- stores source asset id, start time, end time, preview reference, and transcript snippet when available
+- one row per Photos asset
+- stores `PHAsset.localIdentifier`
+- stores asset type such as image or video
+- may store only the smallest additional metadata needed for debug, iCloud-aware fetch behavior, or re-index safety
 
 ### Embedding record
 
-- one row per indexed textual or multimodal representation
-- linked to asset or segment
+- one row per indexed image or video representation
+- linked to an asset through `localIdentifier`
 
 ## MVP Indexing Baseline
 
-The MVP should not assume that source media comes with transcript or caption sidecars.
+The MVP should not assume a filesystem-based photo library or any exported media copies.
 
 Baseline indexing path:
 
-1. image assets: embed directly from source image content
-2. video assets: embed from file-level representation plus derived segment representations
-3. segment representations: start from deterministic time windows or keyframe-derived units, then enrich with transcript later if available
+1. enumerate assets from Apple Photos after permission is granted
+2. request a small thumbnail or lightweight representation for each asset
+3. feed the representation directly to the embedding provider in-memory
+4. persist only vectors and `localIdentifier` links in the local database
 
-This keeps vector retrieval viable for AI agents from day one, while leaving transcript and caption support as additive quality improvements.
+This keeps storage tiny and avoids duplicating the source Photos library, including iCloud-backed originals.
 
 For the first provider implementation, the execution mode is local-first on Apple Silicon hardware. The provider interface should remain portable so a remote embedding service can be added later without changing indexing or retrieval contracts.
 
-## Video Segmentation Baseline
-
-The first segmentation strategy should be shot-aware.
-
-Recommended baseline:
-
-1. detect scene boundaries from visual changes
-2. use those cuts as primary segment boundaries
-3. enforce a maximum segment duration to split overly long scenes deterministically
-
-This gives more precise retrieval units than pure fixed windows, while remaining predictable enough for re-indexing.
-
 ## Deterministic Identity Baseline
 
-For MVP setup, asset identity should come from a deterministic hash over a normalized source descriptor:
+For MVP setup, asset identity should be anchored on `PHAsset.localIdentifier`.
 
-1. normalized relative path from indexed root
-2. filename
-3. file size in bytes
-4. media type
-5. image dimensions or video duration
-
-The resulting descriptor is hashed into `asset_id`.
-
-This is a practical baseline for local-first ingestion. A stronger content-fingerprint strategy can replace or augment it later if needed.
-
-Segment identity should be derived from:
-
-1. `asset_id`
-2. `segment_start_ms`
-3. `segment_end_ms`
-
-The concatenated descriptor is hashed into `segment_id`.
+If an internal record id is needed, it should be derived deterministically from `localIdentifier`, not from exported file paths or generated preview assets.
 
 ## Retrieval Output Contract
 
 Retrieval output v1 should be agent-oriented and stable. Each result should include:
 
 1. stable ids
-2. absolute media path
-3. media type
+2. `localIdentifier`
+3. asset type
 4. score
-5. segment timing when applicable
-6. preview reference
-7. optional text context
-8. concise match evidence
+5. target album information
+6. optional debug context
+7. concise match evidence
 
 ## Design Constraint
 
-The storage interface should not assume one vector backend forever. Start simple, but keep the indexing contract portable.
+The storage interface should not assume one vector backend forever. Start simple, keep the indexing contract portable, and never turn the database into a mirrored copy of the Photos library or an on-disk cache of iCloud originals.

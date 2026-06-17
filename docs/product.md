@@ -2,43 +2,45 @@
 
 ## Problem
 
-An AI agent can only pick the right image or the right video clip if the media library is indexed into meaningful units with enough context.
+Keyword search in Apple Photos is not enough when the user wants to find images or videos by semantic meaning in natural language.
 
-Raw filenames and folders are not enough.
+The project needs a local CLI workflow that can search a Photos library semantically, even when original assets live in iCloud, without duplicating the library onto disk.
 
 ## Primary Users
 
-1. a human operator preparing media for AI-driven workflows
-2. an AI agent selecting source images or video segments for downstream generation, editing, or analysis
+1. a human user searching their Apple Photos library from Terminal
+2. a local automation or agent workflow that needs a stable way to resolve semantic image or video queries into Photos assets
 
 ## Core Jobs To Be Done
 
-1. ingest media folders without manual database work
-2. make image assets searchable by meaning, not just filename
-3. make videos searchable by segment and timestamp, with transcript as optional enrichment
-4. let downstream agents retrieve the exact file and exact segment they should use
+1. access Apple Photos locally after the user grants macOS Photos permission
+2. read directly from the macOS Photos app access layer, including assets whose originals are stored in iCloud
+3. turn Photos thumbnails or lightweight video representations into searchable vectors without writing media copies to disk
+4. let the user run an indexing command on demand from Terminal
+5. let the user search in natural language from Terminal
+6. push matching assets into a Photos album so review happens in the native app
 
 ## Must-Have Retrieval Output
 
 Each result should eventually be able to return:
 
-1. asset id
-2. absolute path
-3. media type
-4. score
-5. preview reference
-6. transcript or caption excerpt when available
-7. segment start and end when media is video
-8. stable metadata useful for follow-up agent actions
+1. `PHAsset.localIdentifier`
+2. score
+3. enough metadata to add the asset into `AI Search Results`
+4. asset type such as image or video
+5. optional debug context useful for CLI inspection
 
 ## MVP Decisions
 
-1. Transcript/caption is optional enrichment, not a prerequisite for indexing.
-2. The MVP must still index images and videos into a vector-oriented store even when no sidecar text exists.
+1. The first MVP targets both images and videos stored in Apple Photos.
+2. The app must run entirely locally on a MacBook Air with Apple Silicon.
 3. The first usable retrieval surface is `CLI only`.
 4. The first embedding provider is local-first on Apple Silicon; remote providers stay out of MVP.
-5. Video segmentation starts with shot-aware cuts plus a max-duration fallback to preserve detail.
-6. Retrieval output v1 is optimized for AI agents, not for human-only browsing.
+5. Extraction must stay in-memory and must not create preview files or media proxies on SSD.
+6. The database should store only vectors and `PHAsset.localIdentifier`, with as little extra state as possible.
+7. Search results should be surfaced by updating a Photos album named `AI Search Results`.
+8. Apple Photos on macOS is the only supported source of truth; originals may reside in iCloud.
+9. Runtime code organization starts with explicit folders for `scanner`, `extractor`, `enrichment`, `indexer`, and `retriever`, with CLI/config/storage concerns kept separate.
 
 ## Retrieval Surface Decision
 
@@ -48,38 +50,45 @@ We are explicitly not adding a local HTTP API during project setup. A local HTTP
 
 ## Semantic Indexing Decision
 
-For the first MVP, semantic retrieval cannot depend on transcript or caption files being present.
+For the first MVP, semantic retrieval covers both images and videos and must not depend on exported media files on disk.
 
 The baseline path is:
 
-1. generate embeddings directly from image files
-2. generate embeddings for video at asset level and segment level from derived visual representations
-3. attach transcript or caption text later when it exists, as an enrichment layer that improves recall and agent context
+1. request a thumbnail or lightweight representation from Apple Photos for each asset
+2. feed that representation directly into a local multimodal embedding model
+3. persist only the vector and its linked `PHAsset.localIdentifier`
 
 The first implementation target is a local multimodal provider that can run on Apple Silicon. Remote embedding services may be added later behind the same interface, but are not part of MVP setup.
 
-## Video Segmentation Decision
+## Photos Integration Decision
 
-The first segmentation baseline should prioritize retrieval precision and detail over minimal implementation effort.
+The MVP should use Apple Photos as both the source library and the review surface.
 
 The baseline path is:
 
-1. detect shot or scene boundaries first
-2. keep those boundaries as primary candidate segments
-3. split any segment that remains too long using a deterministic max-duration rule
+1. request Photos permission through the native macOS privacy flow
+2. read asset identifiers and in-memory representations through Photos APIs on macOS
+3. handle assets whose originals are stored in iCloud through the normal Photos access path rather than a filesystem export flow
+4. write search results back by creating or updating a Photos album
 
-This avoids the weakest parts of pure fixed-window segmentation while still guaranteeing bounded segment size for indexing and retrieval.
+This keeps the workflow native and avoids building a redundant image browser.
 
 ## Retrieval Contract v1
 
 Each retrieval result returned to an AI agent should include:
 
 1. `result_id`
-2. `asset_id`
-3. `absolute_path`
-4. `media_type`
+2. `local_identifier`
+3. `asset_type`
+4. `album_name`
 5. `score`
-6. `segment_start_ms` and `segment_end_ms` when applicable
-7. `preview_ref`
-8. `text_context` when available
-9. `match_evidence` summarizing why this result matched
+6. optional debug metadata
+7. `match_evidence` summarizing why this result matched
+
+## Non-Goals
+
+1. transcript or caption ingestion
+2. exporting the Photos library to a mirrored local folder
+3. storing thumbnail files, preview caches, or video proxy caches on disk
+4. building a separate desktop browsing app for MVP
+5. requiring a non-Photos source library for MVP

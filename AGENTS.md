@@ -15,11 +15,16 @@ Media Vector Index
 
 ## Mục tiêu
 
-Xây dựng một công cụ local-first để index image và video vào một catalog vector-oriented có thể search, để các AI agent về sau có thể:
+Xây dựng một công cụ dòng lệnh (CLI) chạy hoàn toàn local trên MacBook Air dùng Apple Silicon để tìm kiếm ảnh và video trong ứng dụng Apple Photos bằng ngôn ngữ tự nhiên.
 
-1. tìm ra media asset phù hợp theo semantic intent
-2. kiểm tra video resource theo segment hoặc timestamp
-3. lấy đủ metadata, transcript, và preview reference để chọn đúng source material
+Mục tiêu cốt lõi của bản đầu:
+
+1. đọc thư viện Photos qua API hệ thống và kích hoạt được quyền truy cập Photos của macOS
+2. đọc trực tiếp thư viện Apple Photos trên macOS qua Photos framework, kể cả khi ảnh hoặc video gốc đang nằm trên iCloud
+3. lấy thumbnail hoặc representation kích thước nhỏ trực tiếp vào RAM cùng với `PHAsset.localIdentifier`
+4. tạo vector từ thumbnail hoặc video representation bằng mô hình multimodal local tối ưu cho Apple Silicon
+5. chỉ lưu database rất nhẹ gồm vector và `localIdentifier`
+6. đẩy kết quả tìm kiếm vào album `AI Search Results` trong app Photos để người dùng xem bằng giao diện native
 
 ## Giai đoạn hiện tại
 
@@ -30,64 +35,60 @@ Chưa nên implement indexing pipeline, UI, hoặc embedding provider cho đến
 ## Nguyên tắc làm việc
 
 1. Ưu tiên kiến trúc CLI-first.
-2. Chỉ thêm Electron nếu visual review, manual tagging, hoặc timeline browsing thật sự cần thiết.
-3. Giữ storage layer đầu tiên ở mức local và đơn giản.
+2. Không tạo UI riêng; dùng chính app Photos làm giao diện hiển thị kết quả.
+3. Giữ storage layer đầu tiên ở mức local, rất nhẹ, và không lưu file ảnh nháp ra SSD.
 4. Tách rõ các concern sau:
-   - media discovery
-   - metadata extraction
-   - transcript và caption enrichment
+   - Photos library access
+   - thumbnail và video representation extraction in-memory
    - embedding generation
    - vector search
-   - agent-facing retrieval API
+   - album output back to Photos
 5. Mọi design choice nên cải thiện ít nhất một trong các outcome sau:
    - reliable re-indexing
-   - deterministic asset identity
-   - searchable video segments
-   - easy future integration with AI agents
+   - deterministic asset identity qua `PHAsset.localIdentifier`
+   - zero-storage thumbnail và representation processing
+   - native Photos review workflow
 
 ## Non-Goals cho bản build đầu tiên
 
 1. cloud deployment
 2. multi-user auth
-3. polished desktop UI
+3. desktop UI riêng, Electron, hoặc local HTTP API
 4. training custom models
-5. production-scale distributed vector infrastructure
+5. transcript pipeline, desktop review UI riêng, hoặc mirror/export toàn bộ library từ iCloud về local disk
+6. production-scale distributed vector infrastructure
 
 ## Định hướng kỹ thuật ban đầu
 
 ### Candidate runtime
 
 - Primary: Node.js CLI
-- Optional về sau: Electron shell cho asset browsing
+- Optional về sau: chỉ cân nhắc thêm integration khác khi workflow với Photos app đã không đủ
 
 ### Retrieval surface đầu tiên
 
 - Chốt dùng `CLI only` cho MVP đầu tiên.
 - Chưa thêm local HTTP API ở giai đoạn project setup.
-- Agent-facing retrieval ban đầu được expose qua CLI commands ổn định, rồi mới cân nhắc tách thêm local HTTP API khi có nhu cầu integration rõ ràng.
+- Output review flow mặc định phải đi qua album trong app Photos, không qua UI riêng.
 
 ### Candidate storage
 
-- metadata catalog: SQLite
+- metadata catalog: SQLite hoặc file DB local rất nhẹ
 - vector layer: bắt đầu local, abstract phía sau một repository interface
-- preview artifacts: local generated cache
+- không lưu preview artifacts, thumbnail cache, hoặc video proxy cache ra ổ đĩa trong MVP
 
 ### Candidate indexing model
 
-- image unit: một asset cho mỗi file, semantic retrieval ban đầu ưu tiên embedding trực tiếp từ image
-- video unit: một asset cho mỗi file cộng với segment-level records, semantic retrieval ban đầu ưu tiên embedding từ keyframe hoặc segment representation
-- segment identity nên giữ lại:
-  - source path
-  - start time
-  - end time
-  - transcript excerpt nếu có
-  - preview frame path
+- image unit: một asset Photos cho mỗi `PHAsset.localIdentifier`
+- video unit: một asset Photos cho mỗi `PHAsset.localIdentifier`, với representation phục vụ semantic retrieval được trích trực tiếp từ Photos access path
+- indexing input ban đầu là thumbnail hoặc representation cỡ nhỏ được nạp trực tiếp vào RAM
+- source of truth cho media gốc và hiển thị kết quả là app Photos, không phải filesystem mirror
 
-### Transcript và caption cho MVP
+### Workflow mục tiêu cho MVP
 
-- Transcript/caption không phải điều kiện tiên quyết để tạo vector index ở MVP đầu tiên.
-- Nếu media không có sidecar transcript/caption, hệ thống vẫn phải index được vào vector DB từ chính image hoặc video representation.
-- Sidecar transcript/caption là enrichment tùy chọn để tăng chất lượng retrieval, không phải dependency bắt buộc của bản đầu.
+1. `index`: người dùng chạy lệnh CLI để quét thư viện Photos và cập nhật vector DB cho cả ảnh lẫn video
+2. `search`: người dùng gõ truy vấn ngôn ngữ tự nhiên trên Terminal
+3. `output`: hệ thống tạo hoặc cập nhật album `AI Search Results` trong app Photos bằng chính các asset gốc hoặc asset tham chiếu từ iCloud-backed library
 
 ## Tài liệu bắt buộc
 
@@ -114,16 +115,16 @@ Trước khi implement, luôn giữ các file sau được cập nhật:
 2. define storage và indexing boundaries
 3. define folder layout
 4. scaffold package và empty modules
-5. implement ingestion cho image và video metadata
-6. implement segment và transcript indexing
-7. implement embedding provider abstraction
-8. implement search và agent retrieval surface
+5. implement Photos access và in-memory ingestion cho ảnh lẫn video
+6. implement embedding provider abstraction cho Apple Silicon local execution
+7. implement search và album output workflow
+8. harden re-indexing, permissions, iCloud-backed access, và lightweight storage
 
 ## Ghi chú cho các agent sau này
 
-Đừng nhảy thẳng vào Electron.
+Đừng nhảy thẳng vào Electron hay HTTP API.
 
-Nếu chưa có nhu cầu rõ ràng cho visual review workflow, hãy ưu tiên effort cho ingestion quality, segment retrieval quality, và deterministic local storage trước.
+Nếu chưa có nhu cầu rõ ràng vượt quá Photos app, hãy ưu tiên effort cho TCC permissions, iCloud-backed Photos access, in-memory thumbnail or representation pipeline, `localIdentifier` stability, và album output workflow trước.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,

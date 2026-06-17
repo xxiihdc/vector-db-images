@@ -9,37 +9,36 @@
 
 ## Phase 1: Core Scaffold
 
-- [ ] define folder layout cho runtime code
+- [x] define folder layout cho runtime code
 - [ ] define cấu trúc config file
 - [ ] define asset schema
-- [ ] define segment schema
 - [ ] define retrieval output schema
 - [ ] define embedding provider interface cho local-first execution
-- [ ] define shot-aware segmentation config và max segment duration rule
+- [ ] define Photos permission và library access boundary
+- [ ] define lightweight DB schema cho `localIdentifier` + vector
+- [ ] define image/video representation strategy cho Photos-backed assets
 
 ## Phase 2: Ingestion
 
-- [ ] scan các thư mục image và video
-- [ ] detect thay đổi file để re-index
-- [ ] extract image metadata
-- [ ] extract video metadata
-- [ ] derive segment windows
-- [ ] derive visual representation cho asset và segment để phục vụ embedding
+- [ ] scan Apple Photos library
+- [ ] handle TCC permission prompt cho Photos access
+- [ ] handle iCloud-backed originals qua Photos access path
+- [ ] extract thumbnail `224x224` hoặc lightweight video representation in-memory
+- [ ] detect thay đổi asset để re-index
+- [ ] derive embedding input trực tiếp từ RAM buffer cho cả ảnh và video
 
 ## Phase 3: Enrichment
 
-- [ ] import transcript sidecars nếu có
-- [ ] attach captions hoặc descriptions như enrichment layer
-- [ ] normalize textual context cho từng asset và segment
+- [ ] define metadata enrichment tối thiểu nếu cần cho debug hoặc ranking
+- [ ] normalize text query path cho semantic search ảnh và video
 
 ## Phase 4: Search
 
 - [ ] implement embedding provider abstraction
-- [ ] implement vector indexing path không phụ thuộc transcript/caption
+- [ ] implement vector indexing path không tạo file ảnh tạm
 - [ ] implement local search path
-- [ ] implement agent-facing retrieval command
+- [ ] implement album update flow cho `AI Search Results`
 
 ## Phase 5: Optional UX
 
-- [ ] đánh giá nhu cầu cho Electron viewer
-- [ ] chỉ thêm timeline và preview workflow nếu CLI cho thấy chưa đủ
+- [ ] chỉ đánh giá integration khác nếu workflow CLI + Photos album tỏ ra chưa đủ

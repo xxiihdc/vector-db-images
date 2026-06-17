@@ -41,6 +41,8 @@ Each result should eventually be able to return:
 7. Search results should be surfaced by updating a Photos album named `AI Search Results`.
 8. Apple Photos on macOS is the only supported source of truth; originals may reside in iCloud.
 9. Runtime code organization starts with explicit folders for `scanner`, `extractor`, `enrichment`, `indexer`, and `retriever`, with CLI/config/storage concerns kept separate.
+10. Runtime setup starts with one local config file, `media-vector-index.config.json`, instead of multiple env-driven surfaces.
+11. The primary runtime shape is `Node.js CLI + Python photos-bridge`, where the Python bridge owns all direct Photos framework access through PyObjC.
 
 ## Retrieval Surface Decision
 
@@ -59,6 +61,8 @@ The baseline path is:
 3. persist only the vector and its linked `PHAsset.localIdentifier`
 
 The first implementation target is a local multimodal provider that can run on Apple Silicon. Remote embedding services may be added later behind the same interface, but are not part of MVP setup.
+
+For re-index safety, the MVP should keep the previous successful embedding searchable when the same asset still has the same `PHAsset.localIdentifier` but a fresh extraction attempt fails temporarily.
 
 ## Photos Integration Decision
 
@@ -84,6 +88,11 @@ Each retrieval result returned to an AI agent should include:
 5. `score`
 6. optional debug metadata
 7. `match_evidence` summarizing why this result matched
+
+For MVP setup, the runtime also defines two storage-facing contracts:
+
+1. an `asset record` keyed by deterministic `asset_id` plus `PHAsset.localIdentifier`
+2. an `embedding record` keyed by deterministic `embedding_id` and linked back to the asset record
 
 ## Non-Goals
 

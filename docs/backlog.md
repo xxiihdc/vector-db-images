@@ -11,13 +11,13 @@
 
 - [x] define folder layout cho runtime code
 - [x] define folder layout nội bộ cho `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
-- [ ] define cấu trúc config file
-- [ ] define asset schema
-- [ ] define retrieval output schema
+- [x] define cấu trúc config file
+- [x] define asset schema
+- [x] define retrieval output schema
 - [ ] define embedding provider interface cho local-first execution
-- [ ] define Photos permission và library access boundary
-- [ ] define lightweight DB schema cho `localIdentifier` + vector
-- [ ] define image/video representation strategy cho Photos-backed assets
+- [x] define lightweight DB schema cho `localIdentifier` + vector
+- [x] define Photos permission và library access boundary
+- [x] define image/video representation strategy cho Photos-backed assets
 
 ## Phase 2: Ingestion
 
@@ -25,7 +25,7 @@
 - [ ] handle TCC permission prompt cho Photos access
 - [ ] handle iCloud-backed originals qua Photos access path
 - [ ] extract thumbnail `224x224` hoặc lightweight video representation in-memory
-- [ ] detect thay đổi asset để re-index
+- [x] detect thay đổi asset để re-index
 - [ ] derive embedding input trực tiếp từ RAM buffer cho cả ảnh và video
 
 ## Phase 3: Enrichment

@@ -27,17 +27,26 @@ Quy ước:
 - [x] Thiết kế folder layout cho các layer `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
 - [x] Chốt boundary nội bộ: `scanner` dừng ở asset discovery, `extractor` mới bắt đầu lấy representation bytes
 - [x] Chốt tách `retriever/query` khỏi `retriever/album` để read path và write-back path không dính nhau
-- [ ] Thiết kế cấu trúc config file
-- [ ] Định nghĩa schema cho asset record
-- [ ] Định nghĩa schema cho embedding record
-- [ ] Định nghĩa schema output cho retrieval result
-- [ ] Định nghĩa deterministic asset identity từ `PHAsset.localIdentifier`
-- [ ] Định nghĩa boundary cho Photos framework connection, Photos permission, và library access
-- [ ] Định nghĩa workflow connect trực tiếp tới Apple Photos trên macOS, không qua filesystem mirror
-- [ ] Định nghĩa strategy lấy image thumbnail và video representation hoàn toàn in-memory
-- [ ] Định nghĩa strategy xử lý asset gốc nằm trên iCloud
-- [ ] Định nghĩa workflow ghi kết quả trở lại album `AI Search Results` trong Photos
-- [ ] Định nghĩa chiến lược detect thay đổi asset để re-index an toàn
+- [x] Thiết kế cấu trúc config file
+- [x] Chốt config surface đầu tiên là một file `media-vector-index.config.json`
+- [x] Chốt các section config nền: `app`, `storage`, `scanner`, `extractor`, `indexer`, `retriever`, `embedding`, `debug`
+- [x] Chốt rule: config không chứa filesystem mirror path của Photos library và không chứa secrets cho MVP setup
+- [x] Định nghĩa schema cho asset record
+- [x] Định nghĩa schema cho embedding record
+- [x] Định nghĩa schema output cho retrieval result
+- [x] Chốt rule: `asset_id`, `embedding_id`, và `result_id` đều là deterministic ids, không dùng random ids
+- [x] Chốt rule: không schema nào được chứa thumbnail bytes, video payload bytes, hoặc filesystem export path
+- [x] Định nghĩa deterministic asset identity từ `PHAsset.localIdentifier`
+- [x] Định nghĩa boundary cho Photos framework connection, Photos permission, và library access
+- [x] Định nghĩa workflow connect trực tiếp tới Apple Photos trên macOS, không qua filesystem mirror
+- [x] Định nghĩa strategy lấy image thumbnail và video representation hoàn toàn in-memory
+- [x] Định nghĩa strategy xử lý asset gốc nằm trên iCloud
+- [x] Định nghĩa workflow ghi kết quả trở lại album `AI Search Results` trong Photos
+- [x] Chốt runtime bridge: `Node.js CLI -> Python photos-bridge -> PyObjC -> Photos framework`
+- [x] Chốt rule: mọi direct Photos API call và album mutation chỉ được thực hiện trong Python bridge
+- [x] Định nghĩa chiến lược detect thay đổi asset để re-index an toàn
+- [x] Chốt rule: cùng `PHAsset.localIdentifier` mà refresh lỗi tạm thời thì giữ embedding cũ ở trạng thái searchable và đánh dấu `stale`
+- [x] Chốt rule: orphan cleanup không được dựa vào một partial scan hoặc một lần extract thất bại
 
 ## Phase 2: Scaffold
 

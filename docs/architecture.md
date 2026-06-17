@@ -240,19 +240,278 @@ src/
 7. `retriever/query` handles semantic matching, while `retriever/album` handles write-back into Photos so read and write concerns stay separable.
 8. `contracts/` folders define layer inputs and outputs locally; only truly shared primitives belong in `src/shared/`.
 
+## Config File Design
+
+The first config design should stay small, explicit, and local-first.
+
+For MVP setup, the runtime should load a single user-editable file named `media-vector-index.config.json` from the working directory. Environment variables may be added later for overrides, but they should not be the primary configuration surface during project setup.
+
+### Config Goals
+
+1. Keep one obvious place for user-tunable runtime decisions.
+2. Separate stable product defaults from machine-specific local paths.
+3. Configure workflow behavior without encoding implementation details of Apple Photos itself.
+4. Keep the file safe to commit only if the user chooses; no secrets are required for MVP setup.
+
+### Top-Level Shape
+
+```json
+{
+  "schema_version": 1,
+  "app": {
+    "results_album_name": "AI Search Results",
+    "log_level": "info"
+  },
+  "storage": {
+    "root_dir": ".data",
+    "catalog_db_path": ".data/catalog.sqlite",
+    "vector_db_path": ".data/vectors.sqlite"
+  },
+  "scanner": {
+    "include_images": true,
+    "include_videos": true,
+    "batch_size": 200
+  },
+  "extractor": {
+    "image_thumbnail_size": 224,
+    "video_strategy": "poster-frame",
+    "allow_network_access": true
+  },
+  "indexer": {
+    "write_batch_size": 64,
+    "reindex_mode": "incremental"
+  },
+  "retriever": {
+    "default_limit": 50,
+    "album_write_mode": "replace"
+  },
+  "embedding": {
+    "provider": "local",
+    "model": "TBD"
+  },
+  "debug": {
+    "save_diagnostics": false
+  }
+}
+```
+
+### Section Responsibilities
+
+- `schema_version`
+  - version gate for config parsing and future migrations
+  - must be required so config evolution stays deterministic
+
+- `app`
+  - owns user-visible runtime defaults such as album naming and log verbosity
+  - must not contain storage or Photos framework internals
+
+- `storage`
+  - owns local writable paths for catalog and vector state
+  - paths remain local and lightweight; no preview cache paths belong here
+
+- `scanner`
+  - owns high-level asset selection and scan traversal tuning
+  - does not configure Photos permission policy itself
+
+- `extractor`
+  - owns representation-level extraction choices such as thumbnail size and video representation mode
+  - keeps the zero-storage path explicit through `allow_network_access` for iCloud-backed fetches
+
+- `indexer`
+  - owns indexing throughput and re-index behavior defaults
+  - must stay independent from embedding provider internals
+
+- `retriever`
+  - owns search output defaults and album write behavior
+  - keeps user-facing retrieval controls out of CLI command code
+
+- `embedding`
+  - owns provider selection and model identity only
+  - provider-specific advanced settings can be added later under this section without changing other layers
+
+- `debug`
+  - owns optional diagnostics toggles
+  - must never permit thumbnail or video proxy caching to disk in the MVP path
+
+### Field Rules
+
+1. Path fields should be relative to the config file by default.
+2. The config must not require any absolute Photos library filesystem path.
+3. The config must not include credentials or remote API keys for MVP setup.
+4. `results_album_name` defaults to `AI Search Results` and should remain user-overridable.
+5. `image_thumbnail_size` defaults to `224` to match the current extraction baseline.
+6. `allow_network_access` represents whether Photos-backed iCloud fetches are allowed during extraction.
+7. `reindex_mode` starts with `incremental` as the default assumption, while exact change detection logic is defined separately.
+8. `album_write_mode` starts with `replace` so each search run can deterministically refresh the review album.
+
+### Config Boundary Decisions
+
+1. Photos permission state is runtime state, not persisted user config.
+2. Raw Photos framework object identifiers beyond `PHAsset.localIdentifier` do not belong in config.
+3. Embedding provider selection belongs in config, but provider implementation details belong in provider modules.
+4. Local storage paths belong in config, but actual schema definitions belong in storage design docs.
+
 ## Storage Shape
 
 ### Asset record
 
-- one row per Photos asset
-- stores `PHAsset.localIdentifier`
-- stores asset type such as image or video
-- may store only the smallest additional metadata needed for debug, iCloud-aware fetch behavior, or re-index safety
+The asset catalog should keep one row per Photos asset and stay intentionally small.
+
+#### Asset Record Schema v1
+
+```json
+{
+  "asset_id": "asset:sha256(localIdentifier)",
+  "local_identifier": "A1B2C3/L0/001",
+  "asset_type": "image",
+  "media_subtypes": [],
+  "favorite": false,
+  "hidden": false,
+  "pixel_width": 4032,
+  "pixel_height": 3024,
+  "duration_seconds": null,
+  "creation_date": "2026-06-01T12:34:56.000Z",
+  "modification_date": "2026-06-10T08:00:00.000Z",
+  "is_in_icloud": true,
+  "indexed_at": "2026-06-17T09:00:00.000Z",
+  "last_seen_at": "2026-06-17T09:00:00.000Z",
+  "source_fingerprint": "2026-06-10T08:00:00.000Z|4032|3024|image"
+}
+```
+
+#### Asset Record Fields
+
+- `asset_id`
+  - deterministic internal id derived from `local_identifier`
+  - never sourced from filesystem paths
+
+- `local_identifier`
+  - canonical `PHAsset.localIdentifier`
+  - required source-of-truth link back into Photos
+
+- `asset_type`
+  - enum: `image` | `video`
+  - baseline media discriminator for indexing and retrieval
+
+- `media_subtypes`
+  - optional normalized subtype labels such as `panorama`, `screenshot`, or `slow-motion`
+  - kept as lightweight strings rather than raw framework constants
+
+- `favorite`
+  - optional user-library signal useful later for ranking or debug
+
+- `hidden`
+  - optional visibility signal useful for filtering and debug
+
+- `pixel_width`, `pixel_height`
+  - minimal technical metadata for extraction planning and debug
+
+- `duration_seconds`
+  - nullable for images
+  - populated for videos when cheaply available from Photos metadata
+
+- `creation_date`, `modification_date`
+  - optional ISO-8601 timestamps from Photos metadata
+  - used later for enrichment or re-index detection
+
+- `is_in_icloud`
+  - nullable boolean if the runtime can detect cloud-backed state
+  - useful for diagnostics and iCloud-aware fetch behavior
+
+- `indexed_at`
+  - last successful time this asset produced an indexable record
+
+- `last_seen_at`
+  - last successful scan sighting time
+  - supports safe orphan detection during re-index
+
+- `source_fingerprint`
+  - compact deterministic comparison string or hash derived from low-cost source metadata
+  - supports change detection without mirroring Photos metadata wholesale
+
+#### Asset Record Rules
+
+1. The asset record must not store thumbnail bytes, video proxy bytes, or exported file paths.
+2. `local_identifier` is required and unique.
+3. `asset_id` is deterministic and derived from `local_identifier`.
+4. `duration_seconds` must be `null` for non-video assets.
+5. Additional metadata is allowed only if it directly helps re-index safety, retrieval filtering, or debug.
 
 ### Embedding record
 
-- one row per indexed image or video representation
-- linked to an asset through `localIdentifier`
+The embedding catalog should keep one row per indexed representation and stay portable across vector backends.
+
+#### Embedding Record Schema v1
+
+```json
+{
+  "embedding_id": "embedding:sha256(asset_id|representation_kind|model_key)",
+  "asset_id": "asset:sha256(localIdentifier)",
+  "local_identifier": "A1B2C3/L0/001",
+  "representation_kind": "image-thumbnail",
+  "embedding_provider": "local",
+  "embedding_model": "TBD",
+  "embedding_dimensions": 1024,
+  "vector_ref": "vector:embedding:sha256(...)",
+  "content_fingerprint": "2026-06-10T08:00:00.000Z|4032|3024|image|224",
+  "source_fingerprint": "2026-06-10T08:00:00.000Z|4032|3024|image",
+  "indexed_at": "2026-06-17T09:00:00.000Z",
+  "status": "ready"
+}
+```
+
+#### Embedding Record Fields
+
+- `embedding_id`
+  - deterministic id for one asset representation under one model identity
+  - allows re-indexing without opaque random ids
+
+- `asset_id`
+  - internal join key back to the asset catalog
+
+- `local_identifier`
+  - denormalized join field for convenience and recovery
+  - must match the parent asset record
+
+- `representation_kind`
+  - enum baseline: `image-thumbnail` | `video-poster-frame` | `video-clip-summary`
+  - starts simple so video strategy can evolve without schema churn
+
+- `embedding_provider`
+  - logical provider key such as `local`
+
+- `embedding_model`
+  - model identifier string selected by config
+
+- `embedding_dimensions`
+  - vector length used for validation and backend portability
+
+- `vector_ref`
+  - reference to the stored vector payload in the chosen vector backend
+  - lets the catalog remain lightweight even if vector storage implementation changes
+
+- `content_fingerprint`
+  - representation-level fingerprint including extraction choices such as thumbnail size
+  - used to decide whether a stored embedding is still valid
+
+- `source_fingerprint`
+  - copied or derived from the asset record at indexing time
+  - helps explain why a re-index was triggered
+
+- `indexed_at`
+  - timestamp of successful vector generation
+
+- `status`
+  - enum baseline: `ready` | `stale` | `failed`
+  - allows safe bookkeeping without inventing a large job system yet
+
+#### Embedding Record Rules
+
+1. The embedding record must not inline the vector itself if the storage backend prefers an external vector table or repository.
+2. `embedding_id` must be deterministic from asset identity, representation kind, and model identity.
+3. There may be multiple embedding rows per asset over time, but only one active `ready` row per `(asset_id, representation_kind, embedding_model)`.
+4. `content_fingerprint` must change when extraction settings that affect embeddings change.
+5. Failed indexing attempts may be tracked by `status`, but should not require storing media payloads.
 
 ## MVP Indexing Baseline
 
@@ -275,17 +534,350 @@ For MVP setup, asset identity should be anchored on `PHAsset.localIdentifier`.
 
 If an internal record id is needed, it should be derived deterministically from `localIdentifier`, not from exported file paths or generated preview assets.
 
+### Deterministic Asset Identity v1
+
+The canonical source identity is the exact `PHAsset.localIdentifier` returned by the Photos framework.
+
+Derived ids should use the following baseline:
+
+```text
+canonical_local_identifier = raw PHAsset.localIdentifier
+asset_id = "asset:" + sha256(canonical_local_identifier)
+```
+
+### Identity Rules
+
+1. `PHAsset.localIdentifier` is the only source-of-truth asset identity for MVP.
+2. The runtime must preserve the exact original `localIdentifier` string for storage and write-back.
+3. `asset_id` exists only as a deterministic internal key derived from `localIdentifier`.
+4. No identity may be derived from filenames, filesystem URLs, iCloud download paths, thumbnail caches, or export artifacts.
+5. Re-indexing must treat the same `localIdentifier` as the same asset, even if thumbnails, dimensions, or cloud state change later.
+6. If Photos reports a different `localIdentifier`, that must be treated as a different asset unless a later migration rule is explicitly introduced.
+
+### Identity Boundary
+
+- `local_identifier`
+  - external/native identity used at the Photos boundary
+
+- `asset_id`
+  - internal deterministic join key for storage and retrieval contracts
+
+- `embedding_id`
+  - deterministic representation identity under one model
+
+- `result_id`
+  - deterministic query-result identity, not a source asset identity
+
+## Photos Bridge Boundary
+
+For MVP setup, the runtime architecture is:
+
+```text
+Node.js CLI
+  -> Python photos-bridge
+    -> PyObjC
+      -> Photos framework on macOS
+```
+
+The Node.js CLI remains the primary orchestration surface. All direct interaction with the macOS Photos framework is delegated to a local Python bridge built on PyObjC.
+
+### Why This Boundary Exists
+
+1. Photos framework access is native-macOS-specific and should stay isolated from the Node CLI.
+2. TCC permission prompting and Photos object handling are easier to reason about behind one bridge boundary.
+3. The rest of the runtime should speak in plain JSON-like contracts, not Objective-C or PyObjC objects.
+
+### Boundary Responsibilities
+
+- Node.js CLI
+  - owns command parsing, config loading, orchestration, storage, and retrieval flow
+  - never imports Photos framework directly
+
+- Python photos-bridge
+  - owns all direct Photos framework calls
+  - owns permission checks, asset enumeration, in-memory extraction, iCloud-aware fetch requests, and album mutations
+
+- Shared contract between Node and Python
+  - plain JSON over stdout/stdin or structured process output
+  - only serializable values cross the boundary
+
+### Photos Permission Boundary
+
+1. TCC permission state is queried and requested only inside the Python bridge.
+2. Node receives normalized statuses such as `authorized`, `limited`, `denied`, `not_determined`, or `restricted`.
+3. Node decides user-facing CLI behavior, but it does not implement native permission calls itself.
+
+### Library Access Boundary
+
+1. Only the Python bridge may create, inspect, or retain Photos framework objects such as `PHAsset`.
+2. Node must never rely on object handles, pointer identities, or filesystem locations from Photos.
+3. The bridge must convert native assets immediately into normalized serializable records.
+
+## Direct Photos Connection Workflow
+
+The project connects directly to Apple Photos on macOS through the Photos framework access path, not through a mirrored library folder.
+
+### Workflow
+
+1. User runs a CLI command in Node.js.
+2. Node loads config and invokes the Python photos-bridge command for the requested operation.
+3. The Python bridge checks Photos authorization status.
+4. If authorization is missing, the bridge triggers the native Photos permission flow.
+5. After authorization, the bridge queries the Photos framework for assets, representations, or albums.
+6. The bridge returns normalized data back to Node for indexing or retrieval orchestration.
+
+### No Filesystem Mirror Rule
+
+1. The runtime must not scan the Photos library package on disk as its source of truth.
+2. The runtime must not require the user to export Originals or maintain a mirrored media folder.
+3. iCloud-backed assets must be accessed through Photos-managed requests rather than by assuming local file presence.
+
+## In-Memory Representation Strategy
+
+The extraction path must remain RAM-only for both image thumbnails and video representations.
+
+### Image Thumbnail Strategy
+
+1. The Python bridge requests a small thumbnail from Photos for each image asset.
+2. The target default size is `224x224`, configurable through the config file.
+3. The bridge converts the result into an in-memory byte payload or array buffer equivalent.
+4. The bridge returns the payload and minimal metadata to Node without persisting preview files.
+
+### Video Representation Strategy
+
+1. The Python bridge requests a lightweight video-derived representation through Photos-managed APIs.
+2. The first baseline representation kind is `video-poster-frame`.
+3. If the representation is generated from AV/Photos APIs, it must still remain in-memory and temporary.
+4. Node receives only the representation payload required for embedding plus minimal metadata.
+
+### RAM-Only Rules
+
+1. No thumbnail image file may be written to SSD as part of the normal extraction path.
+2. No temporary video proxy or exported clip may be persisted to SSD as part of the MVP path.
+3. If a native API internally streams or downloads data, the project still treats the extraction as valid as long as the app does not create its own persisted media artifact.
+4. Diagnostics may log metadata about extraction, but not raw media payloads by default.
+
+## iCloud-Backed Asset Strategy
+
+The project assumes originals may live in iCloud and still treats Apple Photos as the only supported access path.
+
+### Strategy
+
+1. The Python bridge requests asset data through Photos APIs with network-backed retrieval allowed when config permits it.
+2. Asset enumeration should not fail just because the original is not fully local.
+3. Extraction requests should prefer lightweight representations that Photos can resolve without requiring a full manual export workflow.
+4. The bridge should surface whether an asset appears cloud-backed via `is_in_icloud` when that state is cheaply available.
+
+### Fallback Behavior
+
+1. If an iCloud-backed representation is temporarily unavailable, the bridge should return a structured failure or retryable status, not silently drop identity.
+2. The asset record should still remain keyed by the same `localIdentifier`.
+3. Re-index logic may mark the embedding as `failed` or `stale`, but should not create a duplicate asset row.
+
+## Photos Album Write-Back Workflow
+
+Search review happens by writing matching assets into the album `AI Search Results` inside Apple Photos.
+
+### Workflow
+
+1. Node retrieval flow produces result rows containing `local_identifier` and `album_name`.
+2. Node invokes the Python bridge album command with the target album name and ordered `local_identifier` list.
+3. The Python bridge looks up an existing user album with that name.
+4. If the album does not exist, the bridge creates it through the Photos framework.
+5. Based on `album_write_mode`, the bridge refreshes the album contents deterministically.
+6. The bridge resolves each `local_identifier` back to a `PHAsset` and adds the matching assets to the album.
+7. The bridge returns a normalized summary including album name, requested asset count, applied asset count, and any unresolved identifiers.
+
+### Album Write-Back Rules
+
+1. Album mutation happens only inside the Python bridge.
+2. The write-back contract uses `local_identifier` values, not file paths or exported copies.
+3. The default MVP behavior is `replace` so the album reflects the current search result set deterministically.
+4. Failure to resolve some assets must be reported explicitly to Node for CLI output and debug.
+5. The album is a review surface only; it is not an alternative storage backend.
+
+## Safe Re-Index Strategy
+
+Re-indexing should be deterministic, conservative with identity, and resilient to temporary extraction failures from iCloud-backed assets.
+
+### Goal
+
+1. Reuse the same asset identity whenever `PHAsset.localIdentifier` is unchanged.
+2. Refresh embeddings only when low-cost source signals or representation settings imply that the old embedding may be stale.
+3. Avoid dropping searchable assets from the active index merely because a temporary fetch or extraction step failed.
+
+### Re-Index Inputs
+
+The decision to re-index an asset should use low-cost metadata gathered during scanning:
+
+- `local_identifier`
+- `asset_type`
+- `pixel_width`
+- `pixel_height`
+- `duration_seconds` when relevant
+- `modification_date` when available
+- extraction settings that affect the representation, such as thumbnail size or representation kind
+- embedding model identity
+
+These values feed two fingerprints:
+
+```text
+source_fingerprint = hash_or_compact_string(
+  local_identifier,
+  asset_type,
+  pixel_width,
+  pixel_height,
+  duration_seconds,
+  modification_date
+)
+
+content_fingerprint = hash_or_compact_string(
+  source_fingerprint,
+  representation_kind,
+  extraction_settings,
+  embedding_model
+)
+```
+
+### Asset State Comparison
+
+For each scanned asset:
+
+1. If `local_identifier` is new, create a new asset row and schedule indexing.
+2. If `local_identifier` already exists and `source_fingerprint` is unchanged, keep the existing asset row.
+3. If `source_fingerprint` changed, keep the same asset row but mark related embeddings as candidates for refresh.
+4. If the configured extraction settings or embedding model changed, embeddings must also be considered refresh candidates even when `source_fingerprint` is unchanged.
+
+### Embedding Refresh Policy
+
+1. If there is no existing `ready` embedding for the active `(asset_id, representation_kind, embedding_model)`, schedule extraction and embedding generation.
+2. If the stored `content_fingerprint` differs from the newly computed target fingerprint, schedule re-embedding.
+3. If a refresh succeeds, write the new embedding row or update the existing active row and mark it `ready`.
+4. If a refresh fails temporarily, keep the prior `ready` embedding searchable and mark the new refresh attempt state as `stale` or retryable rather than removing the asset from the active index.
+
+### Temporary Failure Rule
+
+When an asset keeps the same `PHAsset.localIdentifier` but a new extraction attempt fails temporarily:
+
+1. retain the previous successful embedding as the active searchable record
+2. mark the asset or attempted embedding refresh as `stale`
+3. record enough metadata to retry later
+4. do not create a duplicate asset row
+5. do not clear the existing searchable result solely because iCloud delivery or extraction was temporarily unavailable
+
+This is the default MVP policy for iCloud-backed instability.
+
+### Missing And Orphan Handling
+
+1. If an asset is seen in the current scan, update `last_seen_at`.
+2. If an existing asset is not seen in the current full scan, do not delete it immediately.
+3. Instead, mark it as missing-or-orphan candidate through scan bookkeeping and require a later confirming scan before removal from the active catalog.
+4. Only after confirmation should the runtime mark related embeddings inactive or remove them from the active search set.
+
+### Full-Scan Safety Rule
+
+Orphan detection should only happen after a scan that the runtime considers complete enough to trust.
+
+If a scan was interrupted, permission-limited, or otherwise partial, it must not be used to conclude that unseen assets were deleted from the Photos library.
+
+### Re-Index Outcome States
+
+- `ready`
+  - current embedding is valid for the active model and representation settings
+
+- `stale`
+  - previously valid embedding is being kept active because source metadata changed or refresh failed temporarily
+
+- `failed`
+  - no valid embedding is currently available for the requested representation/model pair
+
+### Re-Index Rules
+
+1. `local_identifier` continuity always wins over transient extraction failures.
+2. Re-index decisions must use metadata and config-driven fingerprints, not filesystem timestamps or export artifacts.
+3. A temporary iCloud or extraction failure must not silently erase previously searchable content.
+4. Deletion or orphan cleanup must require stronger evidence than one failed or partial scan.
+5. The system should prefer deterministic refresh behavior over aggressive cleanup.
+
 ## Retrieval Output Contract
 
-Retrieval output v1 should be agent-oriented and stable. Each result should include:
+Retrieval output v1 should be agent-oriented, stable, and easy to print in CLI output.
 
-1. stable ids
-2. `localIdentifier`
-3. asset type
-4. score
-5. target album information
-6. optional debug context
-7. concise match evidence
+### Retrieval Result Schema v1
+
+```json
+{
+  "result_id": "result:sha256(query_hash|embedding_id|rank)",
+  "local_identifier": "A1B2C3/L0/001",
+  "asset_id": "asset:sha256(localIdentifier)",
+  "asset_type": "image",
+  "embedding_id": "embedding:sha256(asset_id|representation_kind|model_key)",
+  "representation_kind": "image-thumbnail",
+  "score": 0.8421,
+  "rank": 1,
+  "album_name": "AI Search Results",
+  "match_evidence": {
+    "query_text": "bãi biển lúc hoàng hôn",
+    "strategy": "semantic-vector",
+    "model": "TBD",
+    "notes": [
+      "top similarity match",
+      "image-thumbnail representation"
+    ]
+  },
+  "debug": {
+    "source_fingerprint": "2026-06-10T08:00:00.000Z|4032|3024|image",
+    "embedding_dimensions": 1024,
+    "indexed_at": "2026-06-17T09:00:00.000Z"
+  }
+}
+```
+
+### Retrieval Result Fields
+
+- `result_id`
+  - stable result instance id for one query/result pair
+  - useful for CLI logs and future agent references
+
+- `local_identifier`
+  - required payload for Photos album write-back
+
+- `asset_id`
+  - deterministic internal asset key
+
+- `asset_type`
+  - enum: `image` | `video`
+
+- `embedding_id`
+  - points to the embedding row that produced the match
+
+- `representation_kind`
+  - explains which media representation matched the query
+
+- `score`
+  - normalized numeric relevance score
+
+- `rank`
+  - 1-based position in the returned result set
+
+- `album_name`
+  - target Photos album for the review workflow
+
+- `match_evidence`
+  - compact explanation object for AI-agent and CLI debug use
+  - starts with query text, retrieval strategy, model identity, and short notes
+
+- `debug`
+  - optional non-essential diagnostics
+  - must remain safe to omit from user-facing output
+
+### Retrieval Result Rules
+
+1. Every result must include `local_identifier`, `asset_type`, `score`, and `album_name`.
+2. `score` should be comparable within one result set, even if absolute semantics differ by backend later.
+3. `match_evidence` should explain the match without requiring raw vector data.
+4. The result payload must not include thumbnail bytes, video payloads, or filesystem export paths.
+5. The album write path should be able to operate from retrieval results alone, without refetching unrelated metadata first.
 
 ## Design Constraint
 

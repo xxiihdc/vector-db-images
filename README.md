@@ -80,3 +80,43 @@ src/
 ```
 
 Chi tiết trách nhiệm từng folder được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
+
+## Config File Đã Chốt
+
+Runtime config đầu tiên được chốt theo hướng một file local duy nhất:
+
+- tên file: `media-vector-index.config.json`
+- vị trí mặc định: thư mục làm việc của CLI
+- mục tiêu: cấu hình album output, local storage paths, scan/extract/index/retrieve defaults, và embedding provider selection
+
+Config sample và field rules được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
+
+## Schema Đã Chốt
+
+Ba contract nền cho bước scaffold tiếp theo đã được chốt:
+
+- `asset record`: catalog nhẹ cho từng `PHAsset.localIdentifier`
+- `embedding record`: catalog cho từng representation đã embed
+- `retrieval result`: output contract cho CLI và agent workflow
+
+Chi tiết schema v1, field rules, và boundary được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
+
+## Photos Bridge Đã Chốt
+
+Runtime integration với Apple Photos được chốt theo hướng:
+
+- `Node.js CLI` cho orchestration
+- `Python photos-bridge` cho native Photos access
+- `PyObjC` làm bridge vào Photos framework của macOS
+
+Các decision liên quan tới deterministic identity, direct Photos connection, in-memory extraction, iCloud-backed access, và album write-back được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
+
+## Re-Index Safety Đã Chốt
+
+Chiến lược re-index đầu tiên đã được chốt theo hướng an toàn cho iCloud-backed assets:
+
+- cùng `PHAsset.localIdentifier` thì giữ nguyên identity
+- detect thay đổi bằng fingerprint từ metadata nhẹ + extraction settings + model identity
+- nếu refresh mới lỗi tạm thời, giữ embedding cũ ở trạng thái searchable và đánh dấu `stale`
+
+Chi tiết rule được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).

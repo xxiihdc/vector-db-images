@@ -56,6 +56,7 @@ Quy ước:
 - [x] Tạo lệnh CLI kiểm tra kết nối trực tiếp tới Apple Photos
 - [x] Tạo lệnh CLI scan thư viện Photos và liệt kê asset hợp lệ
 - [x] Tạo lệnh CLI/flow debug để kiểm tra quyền Photos hiện tại và trạng thái truy cập library
+  - [x] Bổ sung preflight command `photos capabilities` để probe native dependency/runtime trước khi debug extraction
 
 ## Phase 3: Ingestion
 
@@ -69,7 +70,11 @@ Quy ước:
 - [x] Implement access path cho asset gốc nằm trên iCloud qua Photos framework
   - [x] Implement Python bridge probe dùng Photos-managed resource request với `networkAccessAllowed` để chạm asset gốc mà không export file ra workspace
   - [x] Expose CLI command để kiểm tra original access path và trả về structured status cho asset local/iCloud-backed
-- [ ] Implement thumbnail extraction `224x224` và video representation chạy hoàn toàn in-memory
+- [x] Implement thumbnail extraction `224x224` và video representation chạy hoàn toàn in-memory
+  - [x] Implement Python bridge path để lấy thumbnail ảnh `224x224` hoàn toàn in-memory từ Photos APIs
+  - [x] Implement Python bridge path để tạo video poster-frame representation hoàn toàn in-memory từ Photos-managed AVAsset access
+  - [x] Expose CLI command để verify extractor path với batch mặc định 10 asset gần nhất thay vì full output
+  - [x] Ưu tiên image downsample path dùng `Quartz/ImageIO` cho hiệu năng và giữ `AppKit` fallback cho compatibility
 - [ ] Implement repository interface cho local DB và vector layer
 - [ ] Implement index pipeline tối thiểu: scan Photos -> extract representation -> normalize -> persist
 - [ ] Implement re-index command để chạy lặp lại không tạo duplicate

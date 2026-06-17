@@ -17,6 +17,10 @@ export function debugPhotosAccess() {
   return runPythonPhotosBridge(PHOTOS_COMMANDS.DEBUG_ACCESS);
 }
 
+export function probePhotosCapabilities() {
+  return runPythonPhotosBridge(PHOTOS_COMMANDS.CAPABILITIES);
+}
+
 export function probeOriginalPhotosAccess({
   allowNetworkAccess = true,
   probeLimit = 5,
@@ -33,6 +37,26 @@ export function probeOriginalPhotosAccess({
       String(probeByteLimit),
       "--probe-timeout-seconds",
       String(probeTimeoutSeconds),
+    ],
+  });
+}
+
+export function extractPhotosRepresentations({
+  allowNetworkAccess = true,
+  limit = 10,
+  thumbnailSize = 224,
+  timeoutSeconds = 30,
+} = {}) {
+  return runPythonPhotosBridge(PHOTOS_COMMANDS.EXTRACT_REPRESENTATIONS, {
+    args: [
+      "--allow-network-access",
+      allowNetworkAccess ? "true" : "false",
+      "--extract-limit",
+      String(limit),
+      "--thumbnail-size",
+      String(thumbnailSize),
+      "--extract-timeout-seconds",
+      String(timeoutSeconds),
     ],
   });
 }

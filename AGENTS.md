@@ -57,6 +57,8 @@ Pha đang chuẩn bị bắt đầu là `Phase 3: Ingestion`.
    - deterministic asset identity qua `PHAsset.localIdentifier`
    - zero-storage thumbnail và representation processing
    - native Photos review workflow
+6. Khi cân bằng trade-off implementation, ưu tiên hiệu năng trước rồi mới tới tính tương thích môi trường.
+7. Nếu thêm thư viện hoặc framework ngoài giúp cải thiện hiệu năng rõ rệt cho workload local-first trên macOS, ưu tiên sử dụng và cập nhật setup/docs tương ứng.
 
 ## Non-Goals cho bản build đầu tiên
 
@@ -140,6 +142,12 @@ Khi cần diễn giải chi tiết hơn, ưu tiên dùng đúng task wording tro
 Đừng nhảy thẳng vào Electron hay HTTP API.
 
 Nếu chưa có nhu cầu rõ ràng vượt quá Photos app, hãy ưu tiên effort cho TCC permissions, iCloud-backed Photos access, in-memory thumbnail or representation pipeline, `localIdentifier` stability, và album output workflow trước.
+
+Với các command có gọi qua macOS native API như Photos framework, TCC, hoặc các runtime bridge phụ thuộc quyền hệ thống của máy người dùng:
+
+- không coi agent bắt buộc phải tự chạy test thành công từ môi trường sandbox/tool
+- ưu tiên review code path, validate phần không phụ thuộc quyền hệ thống, và hướng dẫn Đức chạy trực tiếp trên máy nếu cần xác nhận native behavior
+- nếu output local của Đức đã xác nhận command hoạt động đúng, coi đó là nguồn verify chính thay cho việc agent cố lặp lại cùng command trong môi trường khác
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,

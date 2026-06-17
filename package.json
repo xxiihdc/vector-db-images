@@ -13,7 +13,9 @@
     "photos:check": "node ./src/cli/main.js photos check",
     "photos:request-access": "node ./src/cli/main.js photos request-access",
     "photos:debug": "node ./src/cli/main.js photos debug",
-    "photos:scan": "node ./src/cli/main.js photos scan"
+    "photos:capabilities": "node ./src/cli/main.js photos capabilities",
+    "photos:scan": "node ./src/cli/main.js photos scan",
+    "photos:extract": "node ./src/cli/main.js photos extract"
   },
   "engines": {
     "node": ">=22.0.0"

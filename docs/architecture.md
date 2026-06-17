@@ -16,6 +16,7 @@ Treat Apple Photos on macOS as the system of record for source images and videos
    - requests `224x224` thumbnails or lightweight video representations from Photos APIs
    - keeps all extracted representations in-memory only
    - extracts minimal technical metadata when needed for indexing
+   - current MVP debug path uses image thumbnails plus video poster frames from the most recent 10 assets by default
 
 3. `enrichment`
    - prepares optional text hints or metadata-derived context later
@@ -132,6 +133,7 @@ src/
 - `src/cli/commands/`
   - contains CLI command handlers such as index, search, and diagnostics later
   - stays thin and delegates business flow to core layers
+  - includes preflight native capability probes before deeper Photos extraction debugging
 
 - `src/cli/formatters/`
   - contains terminal output shaping for tables, debug payloads, and summaries
@@ -163,10 +165,12 @@ src/
 
 - `src/extractor/image/`
   - contains image thumbnail request logic and related normalization
+  - current Phase 3 target is `224x224` thumbnails encoded in-memory for embedding input
   - never writes preview images to disk
 
 - `src/extractor/video/`
   - contains lightweight video representation request logic
+  - current Phase 3 target is an in-memory poster frame derived from a Photos-managed AVAsset path
   - stays focused on RAM-only access paths for retrieval inputs
 
 - `src/enrichment/contracts/`

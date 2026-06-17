@@ -79,7 +79,9 @@ This keeps the workflow native and avoids building a redundant image browser.
 
 For the current MVP phase, the CLI now exposes a dedicated permission-request step so the user can intentionally trigger the Photos TCC flow before running full asset traversal.
 
-For the current ingestion milestone, the CLI also exposes an original-access probe so the runtime can verify Photos-managed access to local or iCloud-backed originals before thumbnail and video extraction are added.
+For the current ingestion milestone, the CLI exposes both an original-access probe and an extraction probe so the runtime can verify Photos-managed access plus in-memory thumbnail/video representation generation before the full indexing pipeline is added.
+
+The working debug flow should start with a lightweight capability probe so dependency or runtime mismatches are separated from extraction logic failures early.
 
 ## Retrieval Contract v1
 

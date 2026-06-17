@@ -4,6 +4,7 @@ export function buildHelpText() {
     "",
     "Usage:",
     "  mvi init [--force]",
+    "  mvi index [--limit 200] [--timeout-seconds 30] [--no-cache] [--json]",
     "  mvi photos check [--json]",
     "  mvi photos request-access [--json]",
     "  mvi photos scan [--json]",

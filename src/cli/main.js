@@ -11,6 +11,7 @@ import { runPhotosDebugCommand } from "./commands/photos-debug.js";
 import { runPhotosProbeOriginalsCommand } from "./commands/photos-probe-originals.js";
 import { runPhotosExtractCommand } from "./commands/photos-extract.js";
 import { runPhotosCapabilitiesCommand } from "./commands/photos-capabilities.js";
+import { runIndexCommand } from "./commands/index.js";
 import {
   AppError,
   toDiagnosticErrorPayload,
@@ -28,6 +29,10 @@ async function dispatch(argv) {
 
   if (command === "init") {
     return runInitCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
+  }
+
+  if (command === "index") {
+    return runIndexCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
   }
 
   if (command === "photos" && subcommand === "check") {

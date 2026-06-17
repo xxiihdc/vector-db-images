@@ -531,6 +531,8 @@ Baseline indexing path:
 
 This keeps storage tiny and avoids duplicating the source Photos library, including iCloud-backed originals.
 
+For the current end of Phase 3, the runtime now includes a minimum `index` command that defaults to a local cache read from the catalog/vector repositories when cache data exists. Passing `--no-cache` forces `scan -> extract -> normalize -> persist` using the existing Photos bridge plus JSON-backed repositories. Until the real provider lands, the persisted vector payload is a deterministic placeholder derived from in-memory representation bytes so the pipeline contract, storage shape, and re-index identity behavior can be validated without writing media to disk.
+
 For the first provider implementation, the execution mode is local-first on Apple Silicon hardware. The provider interface should remain portable so a remote embedding service can be added later without changing indexing or retrieval contracts.
 
 ## Deterministic Identity Baseline

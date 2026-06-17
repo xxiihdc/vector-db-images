@@ -14,6 +14,7 @@ import {
   formatStorageSummaryLines,
 } from "../src/storage/storage-layout.js";
 import { runInitCommand } from "../src/cli/commands/init.js";
+import { createIndexPipeline } from "../src/indexer/pipeline/index-pipeline.js";
 
 async function withTempDir(callback) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mvi-storage-test-"));
@@ -143,5 +144,180 @@ test("storage layout stays in sync across default config, sample config, and ini
     for (const line of expectedLines) {
       assert.ok(output.lines.includes(line));
     }
+  });
+});
+
+test("index pipeline persists assets and embeddings without duplicates across reruns", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: () => ({
+        framework_connection: "connected",
+        permission_status: "authorized",
+        library_access: "connected",
+        valid_asset_count: 2,
+        assets: [
+          {
+            local_identifier: "A1B2C3/L0/001",
+            asset_type: "image",
+            pixel_width: 4032,
+            pixel_height: 3024,
+            modification_date: "2026-06-10T08:00:00.000Z",
+            is_in_icloud: false,
+          },
+          {
+            local_identifier: "D4E5F6/L0/002",
+            asset_type: "video",
+            pixel_width: 1920,
+            pixel_height: 1080,
+            duration_seconds: 12.4,
+            modification_date: "2026-06-11T08:00:00.000Z",
+            is_in_icloud: true,
+          },
+        ],
+      }),
+      extractRepresentationsFn: () => ({
+        representation_count: 2,
+        representations: [
+          {
+            local_identifier: "A1B2C3/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 12,
+            bytes_base64: Buffer.from("image-bytes").toString("base64"),
+            metadata: {
+              status: "ok",
+              is_in_icloud: false,
+            },
+          },
+          {
+            local_identifier: "D4E5F6/L0/002",
+            asset_type: "video",
+            representation_kind: "video-poster-frame",
+            byte_length: 12,
+            bytes_base64: Buffer.from("video-bytes").toString("base64"),
+            metadata: {
+              status: "ok",
+              is_in_icloud: true,
+            },
+          },
+        ],
+      }),
+      catalogRepository,
+      vectorRepository,
+      now: () => "2026-06-17T12:00:00.000Z",
+    });
+
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.embedding.model = "phase3-placeholder";
+
+    const firstRun = await pipeline.run({
+      config,
+      limit: 2,
+      timeoutSeconds: 30,
+    });
+    const secondRun = await pipeline.run({
+      config,
+      limit: 2,
+      timeoutSeconds: 30,
+    });
+
+    const assets = await catalogRepository.listAssets();
+    const firstAssetEmbeddings = await vectorRepository.listEmbeddingsForAsset(
+      assets[0].asset_id
+    );
+    const secondAssetEmbeddings = await vectorRepository.listEmbeddingsForAsset(
+      assets[1].asset_id
+    );
+
+    assert.equal(firstRun.persisted_asset_count, 2);
+    assert.equal(firstRun.persisted_embedding_count, 2);
+    assert.equal(secondRun.persisted_asset_count, 2);
+    assert.equal(secondRun.persisted_embedding_count, 2);
+    assert.equal(await catalogRepository.countAssets(), 2);
+    assert.equal(await vectorRepository.countEmbeddings(), 2);
+    assert.equal(firstAssetEmbeddings.length, 1);
+    assert.equal(secondAssetEmbeddings.length, 1);
+    assert.equal(firstAssetEmbeddings[0].embedding_dimensions, 16);
+    assert.equal(secondAssetEmbeddings[0].embedding_dimensions, 16);
+  });
+});
+
+test("index pipeline uses cached catalog and vectors by default when cache exists", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const cachedAsset = await catalogRepository.upsertAsset({
+      local_identifier: "A1B2C3/L0/001",
+      asset_type: "image",
+      pixel_width: 4032,
+      pixel_height: 3024,
+      modification_date: "2026-06-10T08:00:00.000Z",
+      indexed_at: "2026-06-17T12:00:00.000Z",
+      last_seen_at: "2026-06-17T12:00:00.000Z",
+    });
+
+    const cachedEmbedding = buildEmbeddingRecord({
+      asset_id: cachedAsset.asset_id,
+      local_identifier: cachedAsset.local_identifier,
+      representation_kind: "image-thumbnail",
+      embedding_provider: "local",
+      embedding_model: DEFAULT_CONFIG.embedding.model,
+      source_fingerprint: cachedAsset.source_fingerprint,
+      indexed_at: "2026-06-17T12:00:00.000Z",
+      extraction_signature: "image-thumbnail:224",
+    });
+
+    await vectorRepository.saveEmbedding({
+      record: cachedEmbedding,
+      vector: Array.from({ length: 16 }, (_, index) => index / 10),
+    });
+
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: () => {
+        throw new Error("scan should not run on cache hit");
+      },
+      extractRepresentationsFn: () => {
+        throw new Error("extract should not run on cache hit");
+      },
+      catalogRepository,
+      vectorRepository,
+    });
+
+    const result = await pipeline.run({
+      config: structuredClone(DEFAULT_CONFIG),
+      limit: 1,
+      timeoutSeconds: 30,
+      useCache: true,
+    });
+
+    assert.equal(result.cache_mode, "hit");
+    assert.deepEqual(result.stages, ["cache-read"]);
+    assert.equal(result.scanned_asset_count, 1);
+    assert.equal(result.extracted_representation_count, 0);
+    assert.equal(result.persisted_asset_count, 1);
+    assert.equal(result.persisted_embedding_count, 1);
+    assert.equal(result.persisted_assets[0], "A1B2C3/L0/001");
   });
 });

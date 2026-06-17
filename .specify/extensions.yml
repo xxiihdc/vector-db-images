@@ -88,8 +88,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after constitution output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after constitution output
     condition: null
   after_specify:
   - extension: git
@@ -103,8 +103,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after specification output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after specification output
     condition: null
   after_clarify:
   - extension: git
@@ -118,8 +118,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after clarification output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after clarification output
     condition: null
   after_plan:
   - extension: git
@@ -133,8 +133,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after planning output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after planning output
     condition: null
   after_tasks:
   - extension: git
@@ -148,8 +148,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after tasks output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after tasks output
     condition: null
   after_implement:
   - extension: git
@@ -163,8 +163,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after implementation output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after implementation output
     condition: null
   after_checklist:
   - extension: git
@@ -178,8 +178,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after checklist output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after checklist output
     condition: null
   after_analyze:
   - extension: git
@@ -193,8 +193,8 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after analysis output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after analysis output
     condition: null
   after_taskstoissues:
   - extension: git
@@ -208,6 +208,6 @@ hooks:
     command: speckit.checklist.remind
     enabled: true
     optional: false
-    prompt: Update docs/mvp-checklist.md before finishing this output.
-    description: Checklist reminder after tasks-to-issues output
+    prompt: Update docs/mvp-checklist.md and review whether any workflow step should be optimized before finishing this output.
+    description: Checklist and workflow reminder after tasks-to-issues output
     condition: null

@@ -66,7 +66,9 @@ Quy ước:
 - [x] Implement đọc danh sách asset từ Apple Photos sau khi quyền được cấp
   - [x] Implement Python bridge và Node scan flow để enumerate normalized asset candidates từ Photos
   - [x] Verify runtime scan trả về asset thực khi Photos permission đang ở trạng thái `authorized` hoặc `limited`
-- [ ] Implement access path cho asset gốc nằm trên iCloud qua Photos framework
+- [x] Implement access path cho asset gốc nằm trên iCloud qua Photos framework
+  - [x] Implement Python bridge probe dùng Photos-managed resource request với `networkAccessAllowed` để chạm asset gốc mà không export file ra workspace
+  - [x] Expose CLI command để kiểm tra original access path và trả về structured status cho asset local/iCloud-backed
 - [ ] Implement thumbnail extraction `224x224` và video representation chạy hoàn toàn in-memory
 - [ ] Implement repository interface cho local DB và vector layer
 - [ ] Implement index pipeline tối thiểu: scan Photos -> extract representation -> normalize -> persist

@@ -8,6 +8,7 @@ import { runPhotosCheckCommand } from "./commands/photos-check.js";
 import { runPhotosRequestAccessCommand } from "./commands/photos-request-access.js";
 import { runPhotosScanCommand } from "./commands/photos-scan.js";
 import { runPhotosDebugCommand } from "./commands/photos-debug.js";
+import { runPhotosProbeOriginalsCommand } from "./commands/photos-probe-originals.js";
 import {
   AppError,
   toDiagnosticErrorPayload,
@@ -41,6 +42,10 @@ async function dispatch(argv) {
 
   if (command === "photos" && subcommand === "debug") {
     return runPhotosDebugCommand({ cwd, args: rest });
+  }
+
+  if (command === "photos" && subcommand === "probe-originals") {
+    return runPhotosProbeOriginalsCommand({ cwd, args: rest });
   }
 
   throw new AppError("Unknown command.", {

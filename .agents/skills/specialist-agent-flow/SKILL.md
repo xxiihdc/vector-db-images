@@ -13,6 +13,7 @@ This skill routes a task through a small set of specialist agents with clear han
 2. switch into a planning path when needed
 3. implement with a dedicated builder role
 4. finish with testable output and a visualization summary
+5. do a short workflow retrospective before closing the task
 
 Read [references/agent-roles.md](references/agent-roles.md) before using this skill.
 
@@ -54,6 +55,8 @@ Always structure the work with these roles:
      - a concrete test command the user can run now
      - a generated artifact or CLI output that can be inspected
      - a quick visualization summary of what changed and where to look
+   - reviews the just-finished workflow and identifies any step that felt fragile, slow, repetitive, or unnecessarily manual
+   - if an optimization opportunity exists, asks the user whether to improve that workflow now
    - if nothing meaningful can be visualized, say exactly: `Chưa có gì để visualize.`
 
 ## Planning Gate
@@ -102,6 +105,8 @@ After implementation:
 - run the best available validation
 - report what can be tested now
 - report what can be visualized now
+- do a short retrospective on the workflow that was just used
+- if there is a concrete workflow improvement worth making, ask the user whether to optimize it now
 - if there is no visual artifact, UI change, rendered document, or output worth previewing, say `Chưa có gì để visualize.`
 
 ## Final Output Contract
@@ -119,5 +124,9 @@ End with this shape:
 3. `Visualization`
    - one or two lines on what can be previewed
    - or `Chưa có gì để visualize.`
+
+4. `Workflow follow-up`
+   - `No workflow issue found.`
+   - or one short optimization suggestion plus a direct question asking whether to improve it now
 
 Keep the summary concise. The goal is handoff clarity, not a long changelog.

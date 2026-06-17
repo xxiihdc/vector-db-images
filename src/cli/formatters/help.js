@@ -8,5 +8,6 @@ export function buildHelpText() {
     "  mvi photos request-access [--json]",
     "  mvi photos scan [--json]",
     "  mvi photos debug [--json]",
+    "  mvi photos probe-originals [--json]",
   ].join("\n");
 }

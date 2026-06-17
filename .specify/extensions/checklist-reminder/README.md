@@ -1,6 +1,6 @@
 # Checklist Reminder Extension
 
-Local Spec Kit extension that reminds agents to update `docs/mvp-checklist.md` after core workflow outputs.
+Local Spec Kit extension that reminds agents to update `docs/mvp-checklist.md` and do a short workflow retrospective after core workflow outputs.
 
 ## Command
 
@@ -20,4 +20,4 @@ Local Spec Kit extension that reminds agents to update `docs/mvp-checklist.md` a
 
 ## Scope
 
-This extension only applies to Spec Kit workflow hook events. It does not intercept arbitrary free-form chat output, so `AGENTS.md` remains the source of truth for the broader reporting convention.
+This extension only applies to Spec Kit workflow hook events. It does not intercept arbitrary free-form chat output, so `AGENTS.md` remains the source of truth for the broader reporting convention and the final ask-back about workflow optimization.

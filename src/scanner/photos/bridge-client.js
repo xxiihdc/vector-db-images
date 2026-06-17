@@ -16,3 +16,23 @@ export function scanPhotosAssets() {
 export function debugPhotosAccess() {
   return runPythonPhotosBridge(PHOTOS_COMMANDS.DEBUG_ACCESS);
 }
+
+export function probeOriginalPhotosAccess({
+  allowNetworkAccess = true,
+  probeLimit = 5,
+  probeByteLimit = 64 * 1024,
+  probeTimeoutSeconds = 30,
+} = {}) {
+  return runPythonPhotosBridge(PHOTOS_COMMANDS.PROBE_ORIGINAL_ACCESS, {
+    args: [
+      "--allow-network-access",
+      allowNetworkAccess ? "true" : "false",
+      "--probe-limit",
+      String(probeLimit),
+      "--probe-byte-limit",
+      String(probeByteLimit),
+      "--probe-timeout-seconds",
+      String(probeTimeoutSeconds),
+    ],
+  });
+}

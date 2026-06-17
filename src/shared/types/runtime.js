@@ -14,4 +14,5 @@ export const PHOTOS_COMMANDS = Object.freeze({
   REQUEST_ACCESS: "request-access",
   SCAN_ASSETS: "scan-assets",
   DEBUG_ACCESS: "debug-access",
+  PROBE_ORIGINAL_ACCESS: "probe-original-access",
 });

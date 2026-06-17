@@ -668,6 +668,7 @@ The project assumes originals may live in iCloud and still treats Apple Photos a
 2. Asset enumeration should not fail just because the original is not fully local.
 3. Extraction requests should prefer lightweight representations that Photos can resolve without requiring a full manual export workflow.
 4. The bridge should surface whether an asset appears cloud-backed via `is_in_icloud` when that state is cheaply available.
+5. The MVP bridge may first prove this path through a dedicated original-access probe that requests a bounded in-memory data stream from `PHAssetResourceManager` and cancels after enough bytes arrive.
 
 ### Fallback Behavior
 

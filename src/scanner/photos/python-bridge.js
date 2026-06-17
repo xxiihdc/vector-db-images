@@ -7,7 +7,8 @@ const PYTHON_BRIDGE_MAX_BUFFER_BYTES = 128 * 1024 * 1024;
 export function runPythonPhotosBridge(command, options = {}) {
   const pythonExecutable = process.env.MVI_PYTHON_BIN || "python3";
   const scriptPath = path.resolve(process.cwd(), "python/photos_bridge/bridge.py");
-  const result = spawnSync(pythonExecutable, [scriptPath, command, "--json"], {
+  const args = [scriptPath, command, "--json", ...(options.args ?? [])];
+  const result = spawnSync(pythonExecutable, args, {
     cwd: process.cwd(),
     encoding: "utf8",
     // Asset scans can return large JSON payloads for big libraries.

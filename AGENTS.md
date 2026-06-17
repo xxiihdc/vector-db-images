@@ -12,6 +12,11 @@ Media Vector Index
   - skills đã sử dụng
   - agents đã sử dụng
 - Nếu không dùng skill hoặc agent phụ trợ nào, phải ghi rõ là không sử dụng.
+- Sau khi hoàn thành một task, trước khi chốt output cuối, luôn tự review nhanh workflow vừa chạy:
+  - có step nào chưa ổn hoặc còn thủ công quá không
+  - có step nào tốn thời gian bất thường không
+  - có step nào có thể tối ưu bằng hook, checklist, script, hay đổi flow không
+- Nếu có ít nhất một điểm đáng tối ưu, phải hỏi lại Đức ngay trong output cuối bằng một đề xuất ngắn, cụ thể. Không chỉ ghi nhận nội bộ rồi bỏ qua.
 
 ## Mục tiêu
 
@@ -112,6 +117,10 @@ Trước khi implement, luôn giữ các file sau được cập nhật:
 - Không coi task là xong nếu code đã đổi nhưng checklist chưa được cập nhật.
 - Repo có local Spec Kit hook `speckit.checklist.remind` để nhắc cập nhật checklist sau các `after_*` workflow outputs.
 - Hook này chỉ bao phủ các command trong workflow Spec Kit; với các output ngoài workflow đó, agent vẫn phải tự tuân thủ quy ước cập nhật checklist.
+- Sau khi checklist đã được cập nhật hoặc xác nhận là không cần đổi, agent phải làm thêm một bước retrospective workflow ngắn trước khi kết thúc task:
+  - xác định một điểm nghẽn, bước lặp, hoặc thao tác tay dễ tối ưu nhất nếu có
+  - nêu đề xuất tối ưu ngắn gọn cho Đức
+  - hỏi Đức có muốn mình tối ưu workflow đó ngay không
 
 ## Thứ tự thực hiện chuẩn
 

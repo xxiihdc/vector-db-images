@@ -4,7 +4,7 @@ Project scaffold local-first cho semantic search ảnh và video trong Apple Pho
 
 ## Trạng thái
 
-Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, `Phase 2: Scaffold`, và ba bước đầu của `Phase 3: Ingestion` là connect path vào Photos framework, Photos permission flow, và asset enumeration. Bước kế tiếp ưu tiên là iCloud-backed access path theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
+Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, `Phase 2: Scaffold`, và bốn bước đầu của `Phase 3: Ingestion` là connect path vào Photos framework, Photos permission flow, asset enumeration, và iCloud-backed original access path theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
 
 ## Mục tiêu
 
@@ -53,9 +53,11 @@ Repo hiện có skill nội bộ [specialist-agent-flow](/Users/hoaiduc/Document
 
 Skill này ưu tiên flow `assess -> plan if needed -> implement -> test/visualize summary`, và dùng câu `Chưa có gì để visualize.` khi task không tạo ra artifact có thể preview.
 
+Sau mỗi task hoàn tất, agent cũng phải tự làm một retrospective ngắn: xem có bước nào chậm, thủ công, hoặc dễ tối ưu hơn không; nếu có, phải hỏi lại Đức ngay trong phần kết để đề xuất tối ưu workflow tiếp theo.
+
 ## Bước Tiếp Theo
 
-Tiếp tục `Phase 3: Ingestion`: implement access path cho asset gốc nằm trên iCloud qua Photos framework, rồi chuyển sang thumbnail và video representation extraction in-memory.
+Tiếp tục `Phase 3: Ingestion`: chuyển sang thumbnail và video representation extraction in-memory sau khi original access path cho asset iCloud-backed đã có CLI probe riêng.
 
 ## Scaffold CLI
 
@@ -67,6 +69,7 @@ node ./src/cli/main.js photos check
 node ./src/cli/main.js photos request-access
 node ./src/cli/main.js photos scan
 node ./src/cli/main.js photos debug
+node ./src/cli/main.js photos probe-originals
 ```
 
 Ghi chú:
@@ -75,8 +78,9 @@ Ghi chú:
 - `photos check` và `photos debug` hiện chạy native runtime probe qua Python bridge để kiểm tra `PyObjC`, `Photos.framework`, và trạng thái quyền hiện tại
 - `photos request-access` chủ động gọi native Photos authorization request để kích hoạt popup TCC khi trạng thái đang là `not_determined`
 - `photos scan` hiện enumerate asset thật từ Photos framework sau khi quyền đã được cấp và trả về normalized asset candidates
+- `photos probe-originals` dùng Photos-managed resource request với `networkAccessAllowed` để thử chạm asset gốc cho cả asset local và iCloud-backed mà không export file ra workspace
 - khi CLI gặp lỗi, diagnostic log JSON sẽ được ghi vào `logs/` để giữ lại stacktrace và context điều tra
-- asset traversal thật và extraction in-memory vẫn tiếp tục được implement ở các step sau của `Phase 3`
+- thumbnail/video extraction in-memory và index pipeline vẫn tiếp tục được implement ở các step sau của `Phase 3`
 
 ## Python Bridge Runtime
 

@@ -54,11 +54,14 @@ Responsibilities:
 - run available checks
 - summarize what the user can test immediately
 - point to anything the user can preview or inspect visually
+- review whether the completed workflow had a slow, awkward, or repetitive step
+- surface one concrete workflow optimization when warranted and ask whether to do it next
 
 Output:
 
 - exact test command or inspection path
 - quick visualization note
+- short workflow follow-up
 - `Chưa có gì để visualize.` when appropriate
 
 ## Selection Heuristics

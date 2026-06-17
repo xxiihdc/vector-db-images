@@ -82,9 +82,10 @@ Quy ước:
   - [x] Centralize storage layout constants và thêm smoke test giữ config sample với `init` output đồng bộ
   - [x] Add script flow để sync/check sample config và verify storage workflow không cần bước tay lặp lại
 - [x] Implement index pipeline tối thiểu: scan Photos -> extract representation -> normalize -> persist
-- [ ] Implement re-index command để chạy lặp lại không tạo duplicate
+- [x] Implement re-index command để chạy lặp lại không tạo duplicate
   - [x] Mặc định ưu tiên dùng local cache cho `index`; thêm `--no-cache` để ép refresh từ Photos khi cần update
   - [x] Thêm script verify gọn cho cache-hit và forced-refresh để giảm verify tay lặp lại
+  - [x] Thêm CLI `reindex` riêng để ép refresh path nhưng vẫn giữ deterministic upsert không duplicate
 
 ## Phase 4: Search And Retrieval
 

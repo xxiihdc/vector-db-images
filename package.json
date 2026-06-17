@@ -16,6 +16,7 @@
     "verify:index-cache": "npm run test:storage && node ./scripts/verify-index-cache.js",
     "docs:check": "npm run config:check-sample && node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",
     "index": "node ./src/cli/main.js index",
+    "reindex": "node ./src/cli/main.js reindex",
     "photos:check": "node ./src/cli/main.js photos check",
     "photos:request-access": "node ./src/cli/main.js photos request-access",
     "photos:debug": "node ./src/cli/main.js photos debug",

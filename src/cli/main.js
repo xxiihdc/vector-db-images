@@ -12,6 +12,7 @@ import { runPhotosProbeOriginalsCommand } from "./commands/photos-probe-original
 import { runPhotosExtractCommand } from "./commands/photos-extract.js";
 import { runPhotosCapabilitiesCommand } from "./commands/photos-capabilities.js";
 import { runIndexCommand } from "./commands/index.js";
+import { runReindexCommand } from "./commands/reindex.js";
 import {
   AppError,
   toDiagnosticErrorPayload,
@@ -33,6 +34,10 @@ async function dispatch(argv) {
 
   if (command === "index") {
     return runIndexCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
+  }
+
+  if (command === "reindex") {
+    return runReindexCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
   }
 
   if (command === "photos" && subcommand === "check") {

@@ -147,7 +147,7 @@ test("storage layout stays in sync across default config, sample config, and ini
   });
 });
 
-test("index pipeline persists assets and embeddings without duplicates across reruns", async () => {
+test("forced refresh reruns do not create duplicate assets or embeddings", async () => {
   await withTempDir(async (tempDir) => {
     const catalogRepository = createCatalogRepository({
       filePath: path.join(tempDir, "catalog-store.json"),
@@ -226,11 +226,13 @@ test("index pipeline persists assets and embeddings without duplicates across re
       config,
       limit: 2,
       timeoutSeconds: 30,
+      useCache: false,
     });
     const secondRun = await pipeline.run({
       config,
       limit: 2,
       timeoutSeconds: 30,
+      useCache: false,
     });
 
     const assets = await catalogRepository.listAssets();
@@ -243,8 +245,10 @@ test("index pipeline persists assets and embeddings without duplicates across re
 
     assert.equal(firstRun.persisted_asset_count, 2);
     assert.equal(firstRun.persisted_embedding_count, 2);
+    assert.equal(firstRun.cache_mode, "refresh");
     assert.equal(secondRun.persisted_asset_count, 2);
     assert.equal(secondRun.persisted_embedding_count, 2);
+    assert.equal(secondRun.cache_mode, "refresh");
     assert.equal(await catalogRepository.countAssets(), 2);
     assert.equal(await vectorRepository.countEmbeddings(), 2);
     assert.equal(firstAssetEmbeddings.length, 1);

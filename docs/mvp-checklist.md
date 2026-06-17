@@ -92,7 +92,7 @@ Quy ước:
 - [x] Tích hợp embedding provider abstraction với 1 provider hoạt động được
   - [x] Thêm preflight command và verify script tuần tự cho embedding provider setup
   - [x] Khi thiếu runtime cho embedding provider, output phải nói rõ thiếu gì, command cài thư viện nếu có, và nhắc rằng pretrained model có thể auto-download ở lần chạy đầu
-- [ ] Implement vector indexing path cho ảnh và video không tạo file tạm
+- [x] Implement vector indexing path cho ảnh và video không tạo file tạm
 - [ ] Implement local semantic search cho asset image và video
 - [ ] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
 - [ ] Implement album output flow cho `AI Search Results`

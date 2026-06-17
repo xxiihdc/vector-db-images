@@ -541,7 +541,7 @@ For the current end of Phase 3, the runtime now includes:
 1. an `index` command that defaults to a local cache read from the catalog/vector repositories when cache data exists
 2. a `reindex` command that forces `scan -> extract -> normalize -> persist` using the existing Photos bridge plus JSON-backed repositories
 
-Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
+Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors, including batched image-thumbnail and video-poster-frame indexing without temporary files, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
 
 For the first provider implementation, the execution mode is local-first on Apple Silicon hardware. The provider interface should remain portable so a remote embedding service can be added later without changing indexing or retrieval contracts.
 

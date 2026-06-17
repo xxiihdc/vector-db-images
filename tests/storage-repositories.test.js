@@ -261,6 +261,11 @@ test("forced refresh reruns do not create duplicate assets or embeddings", async
     assert.equal(firstRun.persisted_asset_count, 2);
     assert.equal(firstRun.persisted_embedding_count, 2);
     assert.equal(firstRun.cache_mode, "refresh");
+    assert.deepEqual(firstRun.stages, ["scan", "extract", "normalize", "persist"]);
+    assert.equal(firstRun.vector_index_state.temp_file_usage, false);
+    assert.equal(firstRun.vector_index_state.indexed_images, 1);
+    assert.equal(firstRun.vector_index_state.indexed_videos, 1);
+    assert.equal(firstRun.vector_index_state.ready_embeddings, 2);
     assert.equal(secondRun.persisted_asset_count, 2);
     assert.equal(secondRun.persisted_embedding_count, 2);
     assert.equal(secondRun.cache_mode, "refresh");
@@ -340,13 +345,20 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
     assert.equal(result.persisted_asset_count, 1);
     assert.equal(result.persisted_embedding_count, 1);
     assert.equal(result.persisted_assets[0], "A1B2C3/L0/001");
+    assert.equal(result.vector_index_state.temp_file_usage, false);
+    assert.equal(result.vector_index_state.ready_embeddings, 1);
   });
 });
 
-test("embedding provider factory supports open clip and normalizes bridge output", async () => {
+test("embedding provider factory supports open clip and forwards image/video representations in one batch", async () => {
+  let capturedCommand = null;
+  let capturedPayload = null;
   const provider = createEmbeddingProvider({
     config: structuredClone(DEFAULT_CONFIG),
-    bridgeRunner: () => ({
+    bridgeRunner: (command, payload) => {
+      capturedCommand = command;
+      capturedPayload = payload;
+      return {
       ok: true,
       embeddings: [
         {
@@ -358,8 +370,18 @@ test("embedding provider factory supports open clip and normalizes bridge output
           embedding_model: "ViT-B-32",
           model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
         },
+        {
+          local_identifier: "D4E5F6/L0/002",
+          representation_kind: "video-poster-frame",
+          status: "ready",
+          vector: ["0.4", 0.5, 0.6],
+          embedding_provider: "open-clip",
+          embedding_model: "ViT-B-32",
+          model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        },
       ],
-    }),
+    };
+    },
   });
 
   const results = await provider.embedRepresentations({
@@ -370,11 +392,21 @@ test("embedding provider factory supports open clip and normalizes bridge output
         asset_type: "image",
         bytes_base64: Buffer.from("image-bytes").toString("base64"),
       },
+      {
+        local_identifier: "D4E5F6/L0/002",
+        representation_kind: "video-poster-frame",
+        asset_type: "video",
+        bytes_base64: Buffer.from("video-bytes").toString("base64"),
+      },
     ],
   });
 
   assert.equal(provider.modelIdentity, "open-clip:ViT-B-32:laion2b_s34b_b79k");
+  assert.equal(capturedCommand, "embed-image-batch");
+  assert.equal(capturedPayload.representations.length, 2);
+  assert.equal(capturedPayload.representations[1].asset_type, "video");
   assert.deepEqual(results[0].vector, [0.1, 0.2, 0.3]);
+  assert.deepEqual(results[1].vector, [0.4, 0.5, 0.6]);
 });
 
 test("embedding provider unavailable error includes install guidance", async () => {

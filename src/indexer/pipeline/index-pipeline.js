@@ -4,14 +4,6 @@ import { createEmbeddingProvider } from "../../embedding/create-provider.js";
 import { buildAssetRecord } from "../records/asset-record.js";
 import { buildEmbeddingRecord } from "../records/embedding-record.js";
 
-function decodeRepresentationBytes(representation) {
-  if (!representation?.bytes_base64) {
-    return null;
-  }
-
-  return Buffer.from(representation.bytes_base64, "base64");
-}
-
 function shouldPersistRepresentation(representation) {
   return (
     representation?.local_identifier &&
@@ -44,6 +36,20 @@ function buildExtractionSignature({
   }
 
   return `unknown:${thumbnailSize}`;
+}
+
+function createEmptyVectorIndexState() {
+  return {
+    implemented: true,
+    storage_mode: "vector-only",
+    temp_file_usage: false,
+    indexed_images: 0,
+    indexed_videos: 0,
+    attempted_representations: 0,
+    ready_embeddings: 0,
+    failed_embeddings: 0,
+    provider_model_identity: null,
+  };
 }
 
 async function buildCachedIndexState({
@@ -98,6 +104,16 @@ async function buildCachedIndexState({
       source: "vector-cache",
       representation_count: persistedEmbeddings.length,
       representations: [],
+    },
+    vector_index_state: {
+      ...createEmptyVectorIndexState(),
+      storage_mode: "cache-hit",
+      attempted_representations: persistedEmbeddings.length,
+      ready_embeddings: persistedEmbeddings.length,
+      provider_model_identity:
+        config.embedding?.provider && config.embedding?.model
+          ? `${config.embedding.provider}:${config.embedding.model}:${config.embedding?.pretrained ?? "unknown"}`
+          : null,
     },
     scanned_asset_count: cachedAssets.length,
     extracted_representation_count: 0,
@@ -158,6 +174,8 @@ export function createIndexPipeline({
     const persistedEmbeddings = [];
     const skippedRepresentations = [];
     const pendingRepresentations = [];
+    const vectorIndexState = createEmptyVectorIndexState();
+    vectorIndexState.provider_model_identity = embeddingProvider.modelIdentity;
 
     for (const representation of extractionState.representations ?? []) {
       if (!shouldPersistRepresentation(representation)) {
@@ -178,23 +196,13 @@ export function createIndexPipeline({
         indexed_at: timestamp,
         last_seen_at: timestamp,
       });
-      const bytes = decodeRepresentationBytes(representation);
-
-      if (!bytes) {
-        skippedRepresentations.push({
-          local_identifier: representation.local_identifier,
-          asset_type: representation.asset_type,
-          representation_kind: representation.representation_kind,
-          status: "missing-bytes",
-        });
-        continue;
-      }
-
       pendingRepresentations.push({
         representation,
         persistedAsset: await catalogRepository.upsertAsset(assetRecord),
       });
     }
+
+    vectorIndexState.attempted_representations = pendingRepresentations.length;
 
     const embeddingResults = await embeddingProvider.embedRepresentations({
       representations: pendingRepresentations.map(({ representation }) => representation),
@@ -211,6 +219,7 @@ export function createIndexPipeline({
       const embeddingResult = embeddingResultsByKey.get(resultKey);
 
       if (!embeddingResult || embeddingResult.status !== "ready" || !embeddingResult.vector) {
+        vectorIndexState.failed_embeddings += 1;
         skippedRepresentations.push({
           local_identifier: representation.local_identifier,
           asset_type: representation.asset_type,
@@ -242,6 +251,12 @@ export function createIndexPipeline({
         vector: embeddingResult.vector,
       });
 
+      vectorIndexState.ready_embeddings += 1;
+      if (representation.asset_type === "video") {
+        vectorIndexState.indexed_videos += 1;
+      } else if (representation.asset_type === "image") {
+        vectorIndexState.indexed_images += 1;
+      }
       persistedAssets.push(persistedAsset.local_identifier);
       persistedEmbeddings.push({
         embedding_id: embeddingRecord.embedding_id,
@@ -259,6 +274,7 @@ export function createIndexPipeline({
       cache_mode: useCache ? "miss" : "refresh",
       scan_state: scanState,
       extraction_state: extractionState,
+      vector_index_state: vectorIndexState,
       scanned_asset_count: scanState.valid_asset_count ?? scanState.assets?.length ?? 0,
       extracted_representation_count: extractionState.representation_count ?? 0,
       persisted_asset_count: persistedAssets.length,
@@ -269,7 +285,7 @@ export function createIndexPipeline({
       skipped_representations: skippedRepresentations,
       notes: [
         `Index persisted semantic vectors via ${embeddingProvider.modelIdentity}.`,
-        "Embedding generation stays in-memory and does not write thumbnails or video proxies to disk.",
+        "Embedding generation batches in-memory image thumbnails and video poster frames without writing temp files.",
       ],
     };
   }

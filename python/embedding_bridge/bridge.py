@@ -129,6 +129,27 @@ def decode_representation_image(runtime: Dict[str, Any], bytes_base64: str):
     return image.convert("RGB")
 
 
+def build_failed_embedding(
+    representation: Dict[str, Any],
+    provider: str,
+    model: str,
+    pretrained: str,
+    error_code: str,
+    error_message: str,
+) -> Dict[str, Any]:
+    return {
+        "local_identifier": representation.get("local_identifier"),
+        "representation_kind": representation.get("representation_kind"),
+        "status": "failed",
+        "embedding_provider": provider,
+        "embedding_model": model,
+        "model_identity": f"{provider}:{model}:{pretrained}",
+        "vector": None,
+        "error_code": error_code,
+        "error_message": error_message,
+    }
+
+
 def embed_image_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     provider = str(payload.get("provider") or "open-clip")
     model = str(payload.get("model") or "ViT-B-32")
@@ -173,45 +194,73 @@ def embed_image_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         return result
 
     embeddings = []
+    prepared_batch = []
     for representation in payload.get("representations") or []:
         try:
             image = decode_representation_image(runtime, representation["bytes_base64"])
-            image_tensor = preprocess(image).unsqueeze(0).to(runtime_device)
-            with torch.no_grad():
-                image_features = model_instance.encode_image(image_tensor)
-                if normalize:
-                    image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-
-            vector = image_features[0].detach().cpu().tolist()
-            embeddings.append(
+            prepared_batch.append(
                 {
-                    "local_identifier": representation.get("local_identifier"),
-                    "representation_kind": representation.get("representation_kind"),
-                    "status": "ready",
-                    "embedding_provider": provider,
-                    "embedding_model": model,
-                    "model_identity": f"{provider}:{model}:{pretrained}",
-                    "vector": vector,
-                    "error_code": None,
-                    "error_message": None,
+                    "representation": representation,
+                    "image_tensor": preprocess(image),
                 }
             )
         except Exception as error:
             embeddings.append(
-                {
-                    "local_identifier": representation.get("local_identifier"),
-                    "representation_kind": representation.get("representation_kind"),
-                    "status": "failed",
-                    "embedding_provider": provider,
-                    "embedding_model": model,
-                    "model_identity": f"{provider}:{model}:{pretrained}",
-                    "vector": None,
-                    "error_code": "OPEN_CLIP_EMBED_FAILED",
-                    "error_message": str(error),
-                }
+                build_failed_embedding(
+                    representation,
+                    provider,
+                    model,
+                    pretrained,
+                    "OPEN_CLIP_IMAGE_DECODE_FAILED",
+                    str(error),
+                )
+            )
+
+    if prepared_batch:
+        try:
+            image_tensor_batch = torch.stack(
+                [item["image_tensor"] for item in prepared_batch]
+            ).to(runtime_device)
+            with torch.no_grad():
+                image_features = model_instance.encode_image(image_tensor_batch)
+                if normalize:
+                    image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+            vectors = image_features.detach().cpu().tolist()
+            for item, vector in zip(prepared_batch, vectors):
+                representation = item["representation"]
+                embeddings.append(
+                    {
+                        "local_identifier": representation.get("local_identifier"),
+                        "representation_kind": representation.get("representation_kind"),
+                        "status": "ready",
+                        "embedding_provider": provider,
+                        "embedding_model": model,
+                        "model_identity": f"{provider}:{model}:{pretrained}",
+                        "vector": vector,
+                        "error_code": None,
+                        "error_message": None,
+                    }
+                )
+        except Exception as error:
+            embeddings.extend(
+                [
+                    build_failed_embedding(
+                        item["representation"],
+                        provider,
+                        model,
+                        pretrained,
+                        "OPEN_CLIP_EMBED_FAILED",
+                        str(error),
+                    )
+                    for item in prepared_batch
+                ]
             )
 
     result["embeddings"] = embeddings
+    result["notes"].append(
+        f"Embedded {len(prepared_batch)} image-like representation(s) in a single in-memory batch."
+    )
     result["ok"] = all(item.get("status") == "ready" for item in embeddings)
     return result
 

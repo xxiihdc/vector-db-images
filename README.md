@@ -4,7 +4,7 @@ Project scaffold local-first cho semantic search ảnh và video trong Apple Pho
 
 ## Trạng thái
 
-Đang ở giai đoạn planning và project setup.
+Đã hoàn tất phần quyết định phạm vi và core design cho MVP. Bước kế tiếp ưu tiên là `Phase 2: Scaffold` theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
 
 ## Mục tiêu
 
@@ -45,11 +45,11 @@ Vì vậy, deliverable đầu tiên nên là một indexing và search core ổn
 - [AGENTS.md](/Users/hoaiduc/Documents/VectorDB Image/AGENTS.md)
 - [docs/product.md](/Users/hoaiduc/Documents/VectorDB Image/docs/product.md)
 - [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md)
-- [docs/backlog.md](/Users/hoaiduc/Documents/VectorDB Image/docs/backlog.md)
+- [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md)
 
 ## Bước Tiếp Theo
 
-Hoàn thiện product và architecture docs theo scope Apple Photos trực tiếp + iCloud-backed assets, sau đó scaffold CLI và các runtime module rỗng.
+Thực hiện `Phase 2: Scaffold`: scaffold CLI package, tạo module rỗng theo kiến trúc đã chốt, và thêm các lệnh nền để khởi tạo config, kiểm tra Photos access, và scan thư viện ở mức khung.
 
 ## Folder Layout Đã Chốt
 

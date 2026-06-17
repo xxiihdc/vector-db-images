@@ -80,10 +80,11 @@ Quy ước:
 
 ## Phase 5: Validation And Docs
 
+- [x] Đồng bộ phase naming và nguồn ưu tiên giữa `AGENTS.md`, `README.md`, và checklist MVP
+- [x] Loại bỏ `docs/backlog.md` vì trùng trách nhiệm với checklist MVP
 - [ ] Tạo fixture hoặc test strategy phù hợp cho Photos access, iCloud-backed assets, và in-memory representation flow
 - [ ] Verify end-to-end flow: connect Photos -> xin quyền -> index -> search -> album output
 - [ ] Viết test cho identity, re-index, zero-storage representation path, retrieval output, album update flow
 - [ ] Cập nhật `README.md` với quickstart và workflow CLI
 - [x] Cập nhật `docs/product.md` theo các quyết định MVP đã chốt
 - [x] Cập nhật `docs/architecture.md` theo storage boundary, indexing boundary, retrieval contract
-- [x] Cập nhật `docs/backlog.md` để phản ánh lại phần MVP và Photos-native workflow

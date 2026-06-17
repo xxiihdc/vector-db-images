@@ -28,9 +28,11 @@ Mục tiêu cốt lõi của bản đầu:
 
 ## Giai đoạn hiện tại
 
-Chỉ đang ở giai đoạn project setup.
+Ưu tiên trạng thái và phase theo `docs/mvp-checklist.md`.
 
-Chưa nên implement indexing pipeline, UI, hoặc embedding provider cho đến khi project structure và decision record ổn định.
+Hiện tại đã hoàn tất `Phase 0: Scope And Decisions` và `Phase 1: Core Design`.
+
+Pha đang chuẩn bị bắt đầu là `Phase 2: Scaffold`.
 
 ## Nguyên tắc làm việc
 
@@ -97,28 +99,30 @@ Trước khi implement, luôn giữ các file sau được cập nhật:
 - `README.md`
 - `docs/product.md`
 - `docs/architecture.md`
-- `docs/backlog.md`
 - `docs/mvp-checklist.md`
 
 ## Checklist vận hành
 
 - File checklist chính cho MVP là `docs/mvp-checklist.md`.
+- `docs/mvp-checklist.md` là nguồn công việc và phase duy nhất cho MVP; không duy trì thêm backlog song song.
 - Mỗi khi hoàn thành một task, phải cập nhật checklist này ngay trong cùng lần làm việc.
 - Nếu một task được break nhỏ hơn để dễ triển khai, thêm sub-task hoặc tách lại wording trong checklist trước khi tiếp tục.
 - Không coi task là xong nếu code đã đổi nhưng checklist chưa được cập nhật.
 - Repo có local Spec Kit hook `speckit.checklist.remind` để nhắc cập nhật checklist sau các `after_*` workflow outputs.
 - Hook này chỉ bao phủ các command trong workflow Spec Kit; với các output ngoài workflow đó, agent vẫn phải tự tuân thủ quy ước cập nhật checklist.
 
-## Thứ tự thực hiện
+## Thứ tự thực hiện chuẩn
 
-1. define product và retrieval requirements
-2. define storage và indexing boundaries
-3. define folder layout
-4. scaffold package và empty modules
-5. implement Photos access và in-memory ingestion cho ảnh lẫn video
-6. implement embedding provider abstraction cho Apple Silicon local execution
-7. implement search và album output workflow
-8. harden re-indexing, permissions, iCloud-backed access, và lightweight storage
+Thứ tự thực hiện chuẩn bám theo `docs/mvp-checklist.md`:
+
+1. `Phase 0: Scope And Decisions`
+2. `Phase 1: Core Design`
+3. `Phase 2: Scaffold`
+4. `Phase 3: Ingestion`
+5. `Phase 4: Search And Retrieval`
+6. `Phase 5: Validation And Docs`
+
+Khi cần diễn giải chi tiết hơn, ưu tiên dùng đúng task wording trong checklist thay vì tự đặt phase mới.
 
 ## Ghi chú cho các agent sau này
 

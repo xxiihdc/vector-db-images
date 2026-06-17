@@ -4,5 +4,6 @@ dist/
 .media-index/
 .data/
 tmp/
+logs/
 coverage/
 __pycache__/

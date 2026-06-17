@@ -4,7 +4,7 @@ Project scaffold local-first cho semantic search ảnh và video trong Apple Pho
 
 ## Trạng thái
 
-Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, `Phase 2: Scaffold`, và hai bước đầu của `Phase 3: Ingestion` là connect path vào Photos framework và Photos permission flow. Bước kế tiếp ưu tiên là asset enumeration theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
+Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, `Phase 2: Scaffold`, và ba bước đầu của `Phase 3: Ingestion` là connect path vào Photos framework, Photos permission flow, và asset enumeration. Bước kế tiếp ưu tiên là iCloud-backed access path theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
 
 ## Mục tiêu
 
@@ -55,7 +55,7 @@ Skill này ưu tiên flow `assess -> plan if needed -> implement -> test/visuali
 
 ## Bước Tiếp Theo
 
-Tiếp tục `Phase 3: Ingestion`: implement asset enumeration thật sau khi quyền Photos đã được cấp, rồi chuyển sang iCloud-backed access path.
+Tiếp tục `Phase 3: Ingestion`: implement access path cho asset gốc nằm trên iCloud qua Photos framework, rồi chuyển sang thumbnail và video representation extraction in-memory.
 
 ## Scaffold CLI
 
@@ -74,7 +74,8 @@ Ghi chú:
 - `init` tạo `media-vector-index.config.json` và local storage placeholder trong `.data/`
 - `photos check` và `photos debug` hiện chạy native runtime probe qua Python bridge để kiểm tra `PyObjC`, `Photos.framework`, và trạng thái quyền hiện tại
 - `photos request-access` chủ động gọi native Photos authorization request để kích hoạt popup TCC khi trạng thái đang là `not_determined`
-- `photos scan` hiện chỉ probe connection readiness; asset enumeration thật vẫn là checklist step riêng trong `Phase 3`
+- `photos scan` hiện enumerate asset thật từ Photos framework sau khi quyền đã được cấp và trả về normalized asset candidates
+- khi CLI gặp lỗi, diagnostic log JSON sẽ được ghi vào `logs/` để giữ lại stacktrace và context điều tra
 - asset traversal thật và extraction in-memory vẫn tiếp tục được implement ở các step sau của `Phase 3`
 
 ## Python Bridge Runtime

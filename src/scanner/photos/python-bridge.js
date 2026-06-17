@@ -2,12 +2,16 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { AppError } from "../../shared/errors/app-error.js";
 
+const PYTHON_BRIDGE_MAX_BUFFER_BYTES = 128 * 1024 * 1024;
+
 export function runPythonPhotosBridge(command, options = {}) {
   const pythonExecutable = process.env.MVI_PYTHON_BIN || "python3";
   const scriptPath = path.resolve(process.cwd(), "python/photos_bridge/bridge.py");
   const result = spawnSync(pythonExecutable, [scriptPath, command, "--json"], {
     cwd: process.cwd(),
     encoding: "utf8",
+    // Asset scans can return large JSON payloads for big libraries.
+    maxBuffer: PYTHON_BRIDGE_MAX_BUFFER_BYTES,
   });
 
   if (result.error) {
@@ -25,6 +29,7 @@ export function runPythonPhotosBridge(command, options = {}) {
         command,
         python_executable: pythonExecutable,
         status: result.status,
+        stdout: result.stdout.trim() || null,
         stderr: result.stderr.trim() || null,
       },
     });
@@ -39,6 +44,7 @@ export function runPythonPhotosBridge(command, options = {}) {
         command,
         python_executable: pythonExecutable,
         stdout: result.stdout.trim(),
+        stderr: result.stderr.trim() || null,
       },
       cause: error,
     });

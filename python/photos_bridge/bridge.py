@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
 import platform
 import sys
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 PHOTOS_ACCESS_LEVEL_READ_WRITE = 2
 
@@ -34,6 +36,7 @@ def load_photos_runtime() -> Tuple[dict, Optional[Dict[str, object]]]:
         return runtime, None
 
     try:
+        import Photos  # type: ignore
         from Photos import PHAsset, PHPhotoLibrary  # type: ignore
 
         runtime["photos_framework_available"] = True
@@ -41,6 +44,7 @@ def load_photos_runtime() -> Tuple[dict, Optional[Dict[str, object]]]:
         runtime["framework_connection"] = "connected"
         return runtime, {
             "objc": objc,
+            "Photos": Photos,
             "PHAsset": PHAsset,
             "PHPhotoLibrary": PHPhotoLibrary,
         }
@@ -117,6 +121,177 @@ def probe_library_access(
     PHAsset = modules["PHAsset"]
     fetch_result = PHAsset.fetchAssetsWithOptions_(None)
     return "connected", int(fetch_result.count())
+
+
+def read_native_member(obj: object, name: str):
+    value = getattr(obj, name, None)
+    if callable(value):
+        return value()
+    return value
+
+
+def isoformat_native_date(value: object) -> Optional[str]:
+    if value is None:
+        return None
+
+    if hasattr(value, "timeIntervalSince1970"):
+        timestamp = float(value.timeIntervalSince1970())
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z")
+
+    return str(value)
+
+
+def build_asset_id(local_identifier: str) -> str:
+    digest = hashlib.sha256(local_identifier.encode("utf-8")).hexdigest()
+    return f"asset:{digest}"
+
+
+def normalize_asset_type(asset: object, modules: Dict[str, object]) -> Optional[str]:
+    photos_module = modules["Photos"]
+    media_type = int(read_native_member(asset, "mediaType"))
+    image_constant = int(getattr(photos_module, "PHAssetMediaTypeImage", 1))
+    video_constant = int(getattr(photos_module, "PHAssetMediaTypeVideo", 2))
+
+    if media_type == image_constant:
+        return "image"
+
+    if media_type == video_constant:
+        return "video"
+
+    return None
+
+
+def normalize_media_subtypes(asset: object, modules: Dict[str, object]) -> List[str]:
+    photos_module = modules["Photos"]
+    raw_subtypes = int(read_native_member(asset, "mediaSubtypes"))
+
+    subtype_labels = [
+        ("PHAssetMediaSubtypePhotoPanorama", "panorama"),
+        ("PHAssetMediaSubtypePhotoHDR", "hdr"),
+        ("PHAssetMediaSubtypePhotoScreenshot", "screenshot"),
+        ("PHAssetMediaSubtypePhotoLive", "live-photo"),
+        ("PHAssetMediaSubtypePhotoDepthEffect", "depth-effect"),
+        ("PHAssetMediaSubtypePhotoAnimated", "animated"),
+        ("PHAssetMediaSubtypeVideoStreamed", "streamed"),
+        ("PHAssetMediaSubtypeVideoHighFrameRate", "high-frame-rate"),
+        ("PHAssetMediaSubtypeVideoTimelapse", "timelapse"),
+    ]
+
+    normalized = []
+    recognized_mask = 0
+
+    for constant_name, label in subtype_labels:
+        constant_value = getattr(photos_module, constant_name, None)
+        if constant_value is None:
+            continue
+
+        normalized_value = int(constant_value)
+        if normalized_value and raw_subtypes & normalized_value:
+            normalized.append(label)
+            recognized_mask |= normalized_value
+
+    remaining_mask = raw_subtypes & ~recognized_mask
+    if remaining_mask:
+        normalized.append(f"raw:{remaining_mask}")
+
+    return normalized
+
+
+def build_source_fingerprint(payload: dict) -> str:
+    duration = (
+        ""
+        if payload["duration_seconds"] is None
+        else f"{payload['duration_seconds']:.3f}".rstrip("0").rstrip(".")
+    )
+    return "|".join(
+        [
+            payload["modification_date"] or "",
+            str(payload["pixel_width"] or ""),
+            str(payload["pixel_height"] or ""),
+            payload["asset_type"] or "",
+            duration,
+        ]
+    )
+
+
+def normalize_asset(asset: object, modules: Dict[str, object]) -> Optional[dict]:
+    local_identifier = read_native_member(asset, "localIdentifier")
+    if not local_identifier:
+        return None
+
+    asset_type = normalize_asset_type(asset, modules)
+    if asset_type not in {"image", "video"}:
+        return None
+
+    duration_seconds = float(read_native_member(asset, "duration"))
+    if asset_type != "video":
+        duration_seconds = None
+
+    payload = {
+        "asset_id": build_asset_id(local_identifier),
+        "local_identifier": local_identifier,
+        "asset_type": asset_type,
+        "media_subtypes": normalize_media_subtypes(asset, modules),
+        "source": "photos",
+        "favorite": bool(read_native_member(asset, "favorite")),
+        "hidden": bool(read_native_member(asset, "hidden")),
+        "pixel_width": int(read_native_member(asset, "pixelWidth")),
+        "pixel_height": int(read_native_member(asset, "pixelHeight")),
+        "duration_seconds": duration_seconds,
+        "creation_date": isoformat_native_date(read_native_member(asset, "creationDate")),
+        "modification_date": isoformat_native_date(
+            read_native_member(asset, "modificationDate")
+        ),
+        "is_in_icloud": None,
+    }
+    payload["source_fingerprint"] = build_source_fingerprint(payload)
+    return payload
+
+
+def enumerate_assets(modules: Optional[Dict[str, object]], permission_status: str) -> dict:
+    if not modules:
+        return {
+            "asset_count": 0,
+            "valid_asset_count": 0,
+            "assets": [],
+            "skipped_asset_count": 0,
+            "implemented": False,
+            "errors": ["Photos runtime unavailable; cannot enumerate assets."],
+        }
+
+    if permission_status not in {"authorized", "limited"}:
+        return {
+            "asset_count": 0,
+            "valid_asset_count": 0,
+            "assets": [],
+            "skipped_asset_count": 0,
+            "implemented": False,
+            "errors": [
+                "Photos permission must be authorized or limited before asset enumeration."
+            ],
+        }
+
+    PHAsset = modules["PHAsset"]
+    fetch_result = PHAsset.fetchAssetsWithOptions_(None)
+    asset_count = int(fetch_result.count())
+    assets = []
+
+    for index in range(asset_count):
+        normalized_asset = normalize_asset(fetch_result.objectAtIndex_(index), modules)
+        if normalized_asset is None:
+            continue
+        assets.append(normalized_asset)
+
+    return {
+        "asset_count": asset_count,
+        "valid_asset_count": len(assets),
+        "assets": assets,
+        "skipped_asset_count": asset_count - len(assets),
+        "implemented": True,
+        "errors": [],
+    }
 
 
 def request_authorization(modules: Optional[Dict[str, object]]) -> dict:
@@ -254,6 +429,7 @@ def handle_scan_assets() -> dict:
     _, modules = load_photos_runtime()
     permission_status, raw_status = get_authorization_status(modules)
     library_access, asset_count_probe = probe_library_access(permission_status, modules)
+    enumeration_state = enumerate_assets(modules, permission_status)
 
     payload.update(
         {
@@ -261,13 +437,16 @@ def handle_scan_assets() -> dict:
             "permission_status_raw": raw_status,
             "library_access": library_access,
             "asset_count_probe": asset_count_probe,
-            "asset_count": 0,
-            "valid_asset_count": 0,
-            "assets": [],
-            "implemented": False,
+            "asset_count": enumeration_state["asset_count"],
+            "valid_asset_count": enumeration_state["valid_asset_count"],
+            "skipped_asset_count": enumeration_state["skipped_asset_count"],
+            "assets": enumeration_state["assets"],
+            "implemented": enumeration_state["implemented"],
+            "ok": enumeration_state["implemented"],
+            "errors": payload["errors"] + enumeration_state["errors"],
             "notes": payload["notes"]
             + [
-                "Asset enumeration remains a separate Phase 3 checklist step; scan currently reports connection readiness only.",
+                "Asset enumeration returns normalized Photos asset candidates after permission is granted.",
             ],
         }
     )

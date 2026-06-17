@@ -8,7 +8,12 @@ import { runPhotosCheckCommand } from "./commands/photos-check.js";
 import { runPhotosRequestAccessCommand } from "./commands/photos-request-access.js";
 import { runPhotosScanCommand } from "./commands/photos-scan.js";
 import { runPhotosDebugCommand } from "./commands/photos-debug.js";
-import { AppError, toErrorPayload } from "../shared/errors/app-error.js";
+import {
+  AppError,
+  toDiagnosticErrorPayload,
+  toErrorPayload,
+} from "../shared/errors/app-error.js";
+import { writeDiagnosticLog } from "../shared/utils/diagnostics.js";
 
 async function dispatch(argv) {
   const [command, subcommand, ...rest] = argv;
@@ -47,12 +52,38 @@ async function dispatch(argv) {
 async function main() {
   const argv = process.argv.slice(2);
   const json = hasJsonFlag(argv);
+  const cwd = getCwd();
 
   try {
     const payload = await dispatch(argv.filter((arg) => arg !== "--json"));
     printOutput(payload, { json });
   } catch (error) {
+    let diagnosticLogPath = null;
+
+    try {
+      diagnosticLogPath = await writeDiagnosticLog({
+        cwd,
+        category: "cli-error",
+        payload: {
+          timestamp: new Date().toISOString(),
+          argv,
+          error: toDiagnosticErrorPayload(error),
+        },
+      });
+    } catch (diagnosticError) {
+      diagnosticLogPath = null;
+      console.error(
+        `Failed to write diagnostic log: ${diagnosticError?.message ?? "Unknown error"}`
+      );
+    }
+
     const payload = toErrorPayload(error);
+    if (diagnosticLogPath) {
+      payload.details = {
+        ...(payload.details ?? {}),
+        diagnostic_log_path: diagnosticLogPath,
+      };
+    }
     printOutput(payload, { json: true });
     process.exitCode = 1;
   }

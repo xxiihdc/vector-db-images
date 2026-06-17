@@ -63,7 +63,9 @@ Quy ước:
 - [x] Implement Photos permission flow và xác thực popup TCC xuất hiện đúng
   - [x] Implement CLI và Python bridge path để request Photos authorization qua native TCC flow
   - [x] Verify popup TCC xuất hiện đúng trên macOS runtime có `PyObjC` và trạng thái quyền `not_determined`
-- [ ] Implement đọc danh sách asset từ Apple Photos sau khi quyền được cấp
+- [x] Implement đọc danh sách asset từ Apple Photos sau khi quyền được cấp
+  - [x] Implement Python bridge và Node scan flow để enumerate normalized asset candidates từ Photos
+  - [x] Verify runtime scan trả về asset thực khi Photos permission đang ở trạng thái `authorized` hoặc `limited`
 - [ ] Implement access path cho asset gốc nằm trên iCloud qua Photos framework
 - [ ] Implement thumbnail extraction `224x224` và video representation chạy hoàn toàn in-memory
 - [ ] Implement repository interface cho local DB và vector layer
@@ -84,6 +86,7 @@ Quy ước:
 
 - [x] Đồng bộ phase naming và nguồn ưu tiên giữa `AGENTS.md`, `README.md`, và checklist MVP
 - [x] Loại bỏ `docs/backlog.md` vì trùng trách nhiệm với checklist MVP
+- [x] Thêm diagnostic logging tối giản để lưu stacktrace lỗi CLI và bridge vào local logs
 - [ ] Tạo fixture hoặc test strategy phù hợp cho Photos access, iCloud-backed assets, và in-memory representation flow
 - [ ] Verify end-to-end flow: connect Photos -> xin quyền -> index -> search -> album output
 - [ ] Viết test cho identity, re-index, zero-storage representation path, retrieval output, album update flow

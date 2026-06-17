@@ -216,6 +216,7 @@ src/
 - `src/storage/vector/`
   - contains vector repository interfaces and local backend adapters
   - hides backend choice from indexer and retriever
+  - current Phase 3 backend uses JSON-backed local store files behind the repository boundary
 
 - `src/storage/migrations/`
   - contains local schema evolution helpers if the project needs them
@@ -268,8 +269,8 @@ For MVP setup, the runtime should load a single user-editable file named `media-
   },
   "storage": {
     "root_dir": ".data",
-    "catalog_db_path": ".data/catalog.sqlite",
-    "vector_db_path": ".data/vectors.sqlite"
+    "catalog_db_path": ".data/catalog-store.json",
+    "vector_db_path": ".data/vector-store.json"
   },
   "scanner": {
     "include_images": true,

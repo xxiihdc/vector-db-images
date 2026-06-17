@@ -6,8 +6,8 @@
   },
   "storage": {
     "root_dir": ".data",
-    "catalog_db_path": ".data/catalog.sqlite",
-    "vector_db_path": ".data/vectors.sqlite"
+    "catalog_db_path": ".data/catalog-store.json",
+    "vector_db_path": ".data/vector-store.json"
   },
   "scanner": {
     "include_images": true,

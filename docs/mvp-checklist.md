@@ -75,7 +75,12 @@ Quy ước:
   - [x] Implement Python bridge path để tạo video poster-frame representation hoàn toàn in-memory từ Photos-managed AVAsset access
   - [x] Expose CLI command để verify extractor path với batch mặc định 10 asset gần nhất thay vì full output
   - [x] Ưu tiên image downsample path dùng `Quartz/ImageIO` cho hiệu năng và giữ `AppKit` fallback cho compatibility
-- [ ] Implement repository interface cho local DB và vector layer
+- [x] Implement repository interface cho local DB và vector layer
+  - [x] Implement JSON-backed catalog repository cho asset records
+  - [x] Implement JSON-backed vector repository cho embedding records và vector payloads
+  - [x] Wire `init` storage bootstrap để tạo versioned local stores thay cho placeholder files
+  - [x] Centralize storage layout constants và thêm smoke test giữ config sample với `init` output đồng bộ
+  - [x] Add script flow để sync/check sample config và verify storage workflow không cần bước tay lặp lại
 - [ ] Implement index pipeline tối thiểu: scan Photos -> extract representation -> normalize -> persist
 - [ ] Implement re-index command để chạy lặp lại không tạo duplicate
 

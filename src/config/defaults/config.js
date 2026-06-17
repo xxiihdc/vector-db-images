@@ -1,3 +1,5 @@
+import { createDefaultStorageConfig } from "../../storage/storage-layout.js";
+
 export const DEFAULT_CONFIG_FILE_NAME = "media-vector-index.config.json";
 
 export const DEFAULT_CONFIG = Object.freeze({
@@ -6,11 +8,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     results_album_name: "AI Search Results",
     log_level: "info",
   },
-  storage: {
-    root_dir: ".data",
-    catalog_db_path: ".data/catalog.sqlite",
-    vector_db_path: ".data/vectors.sqlite",
-  },
+  storage: createDefaultStorageConfig(),
   scanner: {
     include_images: true,
     include_videos: true,

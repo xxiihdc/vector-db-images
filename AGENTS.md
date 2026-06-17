@@ -110,6 +110,17 @@ Trước khi implement, luôn giữ các file sau được cập nhật:
 - `docs/architecture.md`
 - `docs/mvp-checklist.md`
 
+## Script workflow bắt buộc cho config/storage
+
+Khi thay đổi `DEFAULT_CONFIG`, storage layout, hoặc sample config:
+
+- dùng `npm run config:sync-sample` để rewrite `media-vector-index.config.json` từ source config hiện tại
+- dùng `npm run config:check-sample` để verify sample config không bị lệch
+- dùng `npm run test:storage` để chạy storage tests; script này đã bao gồm `config:check-sample`
+- dùng `npm run verify:storage` nếu cần smoke test nhanh flow storage end-to-end gồm check sample config, storage tests, và `init --force`
+
+Agent không nên sửa tay `media-vector-index.config.json` nếu thay đổi đó thực chất xuất phát từ `DEFAULT_CONFIG`; ưu tiên update source config rồi gọi script sync tương ứng.
+
 ## Checklist vận hành
 
 - File checklist chính cho MVP là `docs/mvp-checklist.md`.

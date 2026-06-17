@@ -9,7 +9,11 @@
   },
   "scripts": {
     "cli": "node ./src/cli/main.js",
-    "docs:check": "node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",
+    "config:sync-sample": "node ./scripts/sync-config-sample.js",
+    "config:check-sample": "node ./scripts/sync-config-sample.js --check",
+    "test:storage": "npm run config:check-sample && node --test tests/storage-repositories.test.js",
+    "verify:storage": "npm run test:storage && node ./src/cli/main.js init --force",
+    "docs:check": "npm run config:check-sample && node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",
     "photos:check": "node ./src/cli/main.js photos check",
     "photos:request-access": "node ./src/cli/main.js photos request-access",
     "photos:debug": "node ./src/cli/main.js photos debug",

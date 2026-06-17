@@ -100,6 +100,8 @@ For MVP setup, the runtime also defines two storage-facing contracts:
 1. an `asset record` keyed by deterministic `asset_id` plus `PHAsset.localIdentifier`
 2. an `embedding record` keyed by deterministic `embedding_id` and linked back to the asset record
 
+For the current repository milestone, the first local persistence backend is JSON-backed file storage behind repository interfaces for the asset catalog and vector layer. This keeps Phase 3 lightweight while preserving a clean swap path for a later SQLite-backed implementation if needed.
+
 ## Non-Goals
 
 1. transcript or caption ingestion

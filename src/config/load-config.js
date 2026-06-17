@@ -1,12 +1,10 @@
 import path from "node:path";
 import { DEFAULT_CONFIG, DEFAULT_CONFIG_FILE_NAME } from "./defaults/config.js";
 import { validateConfig } from "./schema/config-schema.js";
+import { initializeStorageRepositories } from "../storage/migrations/migration-runner.js";
 import {
-  ensureDir,
   pathExists,
   readJsonFile,
-  resolveFrom,
-  touchFile,
   writeJsonFile,
 } from "../shared/utils/fs.js";
 
@@ -36,29 +34,24 @@ export async function initializeProjectScaffold(cwd, options = {}) {
   const configExists = await pathExists(configPath);
 
   if (configExists && !force) {
+    const config = validateConfig(await readJsonFile(configPath));
+    const storage = await initializeStorageRepositories({ cwd, config });
+
     return {
       created: false,
       reason: "config_exists",
       configPath,
+      ...storage,
     };
   }
 
   const config = structuredClone(DEFAULT_CONFIG);
   await writeJsonFile(configPath, config);
-
-  const storageRoot = resolveFrom(cwd, config.storage.root_dir);
-  const catalogDbPath = resolveFrom(cwd, config.storage.catalog_db_path);
-  const vectorDbPath = resolveFrom(cwd, config.storage.vector_db_path);
-
-  await ensureDir(storageRoot);
-  await touchFile(catalogDbPath);
-  await touchFile(vectorDbPath);
+  const storage = await initializeStorageRepositories({ cwd, config });
 
   return {
     created: true,
     configPath,
-    storageRoot,
-    catalogDbPath,
-    vectorDbPath,
+    ...storage,
   };
 }

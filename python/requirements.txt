@@ -1,0 +1,2 @@
+pyobjc-core>=10.3
+pyobjc-framework-Photos>=10.3

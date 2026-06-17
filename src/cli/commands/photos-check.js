@@ -13,6 +13,7 @@ export async function runPhotosCheckCommand({ cwd }) {
     lines: [
       `Config present: ${configState.exists ? "yes" : "no"}`,
       `Bridge mode: ${bridgeState.bridge_mode}`,
+      `Framework connection: ${bridgeState.framework_connection}`,
       `Permission status: ${bridgeState.permission_status}`,
       `Library access: ${bridgeState.library_access}`,
     ],

@@ -4,7 +4,7 @@ Project scaffold local-first cho semantic search ảnh và video trong Apple Pho
 
 ## Trạng thái
 
-Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, và `Phase 2: Scaffold`. Bước kế tiếp ưu tiên là `Phase 3: Ingestion` theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
+Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, `Phase 2: Scaffold`, và bước đầu tiên của `Phase 3: Ingestion` là connect path vào Photos framework. Bước kế tiếp ưu tiên là Photos permission flow theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
 
 ## Mục tiêu
 
@@ -49,7 +49,7 @@ Vì vậy, deliverable đầu tiên nên là một indexing và search core ổn
 
 ## Bước Tiếp Theo
 
-Thực hiện `Phase 3: Ingestion`: nối Python bridge với Photos framework thật, xin quyền TCC, đọc asset từ Apple Photos, và thay payload scaffold bằng dữ liệu thực cho flow scan và debug.
+Tiếp tục `Phase 3: Ingestion`: implement Photos permission flow, xác thực popup TCC, rồi mới chuyển sang asset enumeration và iCloud-backed access path.
 
 ## Scaffold CLI
 
@@ -65,8 +65,23 @@ node ./src/cli/main.js photos debug
 Ghi chú:
 
 - `init` tạo `media-vector-index.config.json` và local storage placeholder trong `.data/`
-- các lệnh `photos *` đã nối được sang Python bridge placeholder
-- direct Photos framework access, TCC flow, và asset traversal thật sẽ được implement ở `Phase 3: Ingestion`
+- `photos check` và `photos debug` hiện đã chạy native runtime probe qua Python bridge để kiểm tra `PyObjC` và `Photos.framework`
+- `photos scan` hiện chỉ probe connection readiness; asset enumeration thật vẫn là checklist step riêng trong `Phase 3`
+- permission popup TCC, asset traversal thật, và extraction in-memory vẫn tiếp tục được implement ở các step sau của `Phase 3`
+
+## Python Bridge Runtime
+
+Bridge Python hiện cần `PyObjC` để kết nối `Photos.framework`:
+
+```bash
+python3 -m pip install -r python/requirements.txt
+```
+
+Nếu muốn dùng một interpreter khác với `python3` mặc định của hệ thống, có thể override bằng biến môi trường:
+
+```bash
+MVI_PYTHON_BIN=/path/to/python3 node ./src/cli/main.js photos debug
+```
 
 ## Folder Layout Đã Chốt
 

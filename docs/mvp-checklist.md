@@ -59,7 +59,7 @@ Quy ước:
 
 ## Phase 3: Ingestion
 
-- [ ] Implement connect path vào Apple Photos qua Photos framework trên macOS
+- [x] Implement connect path vào Apple Photos qua Photos framework trên macOS
 - [ ] Implement Photos permission flow và xác thực popup TCC xuất hiện đúng
 - [ ] Implement đọc danh sách asset từ Apple Photos sau khi quyền được cấp
 - [ ] Implement access path cho asset gốc nằm trên iCloud qua Photos framework

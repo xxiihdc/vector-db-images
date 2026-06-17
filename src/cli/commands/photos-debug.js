@@ -9,11 +9,12 @@ export async function runPhotosDebugCommand({ cwd }) {
     ...debugState,
     config_path: configState.configPath,
     config_exists: configState.exists,
-    summary: "Photos debug scaffold executed.",
+    summary: "Photos debug runtime probe executed.",
     lines: [
       `Config present: ${configState.exists ? "yes" : "no"}`,
       `Python executable: ${debugState.python_executable}`,
       `Bridge script: ${debugState.bridge_script}`,
+      `Framework connection: ${debugState.framework_connection}`,
       `Direct Photos API calls implemented: ${debugState.direct_api_calls_implemented ? "yes" : "no"}`,
     ],
   };

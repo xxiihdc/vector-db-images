@@ -9,9 +9,11 @@ export async function runPhotosScanCommand({ cwd }) {
     ...scanState,
     config_path: configState.configPath,
     config_exists: configState.exists,
-    summary: "Photos scan scaffold executed.",
+    summary: "Photos scan bridge probe executed.",
     lines: [
       `Config present: ${configState.exists ? "yes" : "no"}`,
+      `Framework connection: ${scanState.framework_connection}`,
+      `Permission status: ${scanState.permission_status}`,
       `Scanned assets: ${scanState.asset_count}`,
       `Valid assets returned: ${scanState.valid_asset_count}`,
     ],

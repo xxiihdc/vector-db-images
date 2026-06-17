@@ -5,6 +5,7 @@ export function buildHelpText() {
     "Usage:",
     "  mvi init [--force]",
     "  mvi photos check [--json]",
+    "  mvi photos request-access [--json]",
     "  mvi photos scan [--json]",
     "  mvi photos debug [--json]",
   ].join("\n");

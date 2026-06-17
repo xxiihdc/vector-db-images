@@ -5,6 +5,10 @@ export function checkPhotosAccess() {
   return runPythonPhotosBridge(PHOTOS_COMMANDS.CHECK_ACCESS);
 }
 
+export function requestPhotosAccess() {
+  return runPythonPhotosBridge(PHOTOS_COMMANDS.REQUEST_ACCESS);
+}
+
 export function scanPhotosAssets() {
   return runPythonPhotosBridge(PHOTOS_COMMANDS.SCAN_ASSETS);
 }

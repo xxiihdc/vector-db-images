@@ -11,6 +11,7 @@ export const ASSET_TYPES = Object.freeze({
 
 export const PHOTOS_COMMANDS = Object.freeze({
   CHECK_ACCESS: "check-access",
+  REQUEST_ACCESS: "request-access",
   SCAN_ASSETS: "scan-assets",
   DEBUG_ACCESS: "debug-access",
 });

@@ -60,7 +60,9 @@ Quy ước:
 ## Phase 3: Ingestion
 
 - [x] Implement connect path vào Apple Photos qua Photos framework trên macOS
-- [ ] Implement Photos permission flow và xác thực popup TCC xuất hiện đúng
+- [x] Implement Photos permission flow và xác thực popup TCC xuất hiện đúng
+  - [x] Implement CLI và Python bridge path để request Photos authorization qua native TCC flow
+  - [x] Verify popup TCC xuất hiện đúng trên macOS runtime có `PyObjC` và trạng thái quyền `not_determined`
 - [ ] Implement đọc danh sách asset từ Apple Photos sau khi quyền được cấp
 - [ ] Implement access path cho asset gốc nằm trên iCloud qua Photos framework
 - [ ] Implement thumbnail extraction `224x224` và video representation chạy hoàn toàn in-memory

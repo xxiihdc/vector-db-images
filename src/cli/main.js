@@ -5,6 +5,7 @@ import { buildHelpText } from "./formatters/help.js";
 import { hasJsonFlag, printOutput } from "./formatters/output.js";
 import { runInitCommand } from "./commands/init.js";
 import { runPhotosCheckCommand } from "./commands/photos-check.js";
+import { runPhotosRequestAccessCommand } from "./commands/photos-request-access.js";
 import { runPhotosScanCommand } from "./commands/photos-scan.js";
 import { runPhotosDebugCommand } from "./commands/photos-debug.js";
 import { AppError, toErrorPayload } from "../shared/errors/app-error.js";
@@ -23,6 +24,10 @@ async function dispatch(argv) {
 
   if (command === "photos" && subcommand === "check") {
     return runPhotosCheckCommand({ cwd, args: rest });
+  }
+
+  if (command === "photos" && subcommand === "request-access") {
+    return runPhotosRequestAccessCommand({ cwd, args: rest });
   }
 
   if (command === "photos" && subcommand === "scan") {

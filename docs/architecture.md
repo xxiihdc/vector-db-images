@@ -623,8 +623,9 @@ The project connects directly to Apple Photos on macOS through the Photos framew
 2. Node loads config and invokes the Python photos-bridge command for the requested operation.
 3. The Python bridge checks Photos authorization status.
 4. If authorization is missing, the bridge triggers the native Photos permission flow.
-5. After authorization, the bridge queries the Photos framework for assets, representations, or albums.
-6. The bridge returns normalized data back to Node for indexing or retrieval orchestration.
+5. The CLI exposes a dedicated `photos request-access` command so permission prompting is explicit, testable, and separate from later scan/extract work.
+6. After authorization, the bridge queries the Photos framework for assets, representations, or albums.
+7. The bridge returns normalized data back to Node for indexing or retrieval orchestration.
 
 ### No Filesystem Mirror Rule
 

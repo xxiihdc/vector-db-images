@@ -77,6 +77,8 @@ The baseline path is:
 
 This keeps the workflow native and avoids building a redundant image browser.
 
+For the current MVP phase, the CLI now exposes a dedicated permission-request step so the user can intentionally trigger the Photos TCC flow before running full asset traversal.
+
 ## Retrieval Contract v1
 
 Each retrieval result returned to an AI agent should include:

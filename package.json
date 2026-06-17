@@ -11,6 +11,7 @@
     "cli": "node ./src/cli/main.js",
     "docs:check": "node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",
     "photos:check": "node ./src/cli/main.js photos check",
+    "photos:request-access": "node ./src/cli/main.js photos request-access",
     "photos:debug": "node ./src/cli/main.js photos debug",
     "photos:scan": "node ./src/cli/main.js photos scan"
   },

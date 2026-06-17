@@ -1,0 +1,4 @@
+interface:
+  display_name: "Specialist Agent Flow"
+  short_description: "Route work through specialist agents"
+  default_prompt: "Use $specialist-agent-flow to route this task through specialist agents with planning gates."

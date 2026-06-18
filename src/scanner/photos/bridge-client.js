@@ -68,3 +68,18 @@ export function ensurePhotosResultsAlbum({
     args: ["--album-name", String(albumName)],
   });
 }
+
+export function writePhotosResultsAlbum({
+  albumName = "AI Search Results",
+  albumWriteMode = "replace",
+  localIdentifiers = [],
+} = {}) {
+  return runPythonPhotosBridge(PHOTOS_COMMANDS.WRITE_RESULTS_ALBUM, {
+    args: ["--payload-stdin"],
+    input: JSON.stringify({
+      album_name: String(albumName),
+      album_write_mode: String(albumWriteMode),
+      local_identifiers: Array.isArray(localIdentifiers) ? localIdentifiers : [],
+    }),
+  });
+}

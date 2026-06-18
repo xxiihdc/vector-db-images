@@ -96,7 +96,7 @@ Quy ước:
 - [x] Implement local semantic search cho asset image và video
 - [x] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
 - [x] Implement album output flow cho `AI Search Results`
-- [ ] Implement ghi asset match trở lại album trong Photos app
+- [x] Implement ghi asset match trở lại album trong Photos app
 - [ ] Implement lệnh CLI `search "..."` với output đủ cho debug
 
 ## Phase 5: Validation And Docs

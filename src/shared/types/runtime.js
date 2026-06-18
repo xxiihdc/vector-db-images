@@ -18,4 +18,5 @@ export const PHOTOS_COMMANDS = Object.freeze({
   PROBE_ORIGINAL_ACCESS: "probe-original-access",
   EXTRACT_REPRESENTATIONS: "extract-representations",
   ENSURE_RESULTS_ALBUM: "ensure-results-album",
+  WRITE_RESULTS_ALBUM: "write-results-album",
 });

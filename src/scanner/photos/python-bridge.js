@@ -11,6 +11,7 @@ export function runPythonPhotosBridge(command, options = {}) {
   const result = spawnSync(pythonExecutable, args, {
     cwd: process.cwd(),
     encoding: "utf8",
+    input: options.input ?? undefined,
     // Asset scans can return large JSON payloads for big libraries.
     maxBuffer: PYTHON_BRIDGE_MAX_BUFFER_BYTES,
   });

@@ -788,6 +788,97 @@ test("album output flow rejects mixed album targets", async () => {
   );
 });
 
+test("album output write-back sends ordered local identifiers to the bridge and merges unresolved rows", async () => {
+  const albumWrites = [];
+  const albumService = createAlbumService({
+    ensureResultsAlbumFn: ({ albumName }) => ({
+      implemented: true,
+      phase: "search",
+      album_name: albumName,
+      requested_album_name: albumName,
+      album_local_identifier: "album/writeback",
+      created: false,
+      found_existing: true,
+      estimated_asset_count: 1,
+      errors: [],
+    }),
+    writeResultsAlbumFn: (payload) => {
+      albumWrites.push(payload);
+      return {
+        implemented: true,
+        phase: "search",
+        album_name: payload.albumName,
+        requested_album_name: payload.albumName,
+        album_local_identifier: "album/writeback",
+        album_write_mode: payload.albumWriteMode,
+        created: false,
+        found_existing: true,
+        estimated_asset_count: 2,
+        requested_asset_count: payload.localIdentifiers.length,
+        applied_asset_count: 1,
+        resolved_asset_count: 1,
+        unresolved_results: [
+          {
+            result_id: null,
+            local_identifier: "VID/404",
+            reason: "asset-not-found",
+          },
+        ],
+        errors: [],
+        notes: ["Album write-back mutated the native Photos album."],
+      };
+    },
+  });
+
+  const result = await albumService.writeAlbumOutput({
+    config: structuredClone(DEFAULT_CONFIG),
+    results: [
+      {
+        result_id: "result:1",
+        local_identifier: "IMG/001",
+        album_name: "AI Search Results",
+      },
+      {
+        result_id: "result:2",
+        local_identifier: "VID/404",
+        album_name: "AI Search Results",
+      },
+      {
+        result_id: "result:3",
+        local_identifier: null,
+        album_name: "AI Search Results",
+      },
+    ],
+  });
+
+  assert.deepEqual(albumWrites, [
+    {
+      albumName: "AI Search Results",
+      albumWriteMode: "replace",
+      localIdentifiers: ["IMG/001", "VID/404"],
+    },
+  ]);
+  assert.equal(result.requested_asset_count, 2);
+  assert.equal(result.applied_asset_count, 1);
+  assert.equal(result.resolved_asset_count, 1);
+  assert.deepEqual(result.requested_local_identifiers, ["IMG/001", "VID/404"]);
+  assert.deepEqual(result.unresolved_results, [
+    {
+      result_id: "result:3",
+      local_identifier: null,
+      reason: "missing-local-identifier",
+    },
+    {
+      result_id: null,
+      local_identifier: "VID/404",
+      reason: "asset-not-found",
+    },
+  ]);
+  assert.ok(
+    result.notes.includes("Album write-back mutated the native Photos album.")
+  );
+});
+
 test("embedding capability lines render concrete requirement guidance", async () => {
   const lines = buildCapabilityLines({
     provider: "open-clip",

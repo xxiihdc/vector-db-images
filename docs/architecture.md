@@ -709,9 +709,9 @@ Search review happens by writing matching assets into the album `AI Search Resul
 6. The bridge resolves each `local_identifier` back to a `PHAsset` and adds the matching assets to the album.
 7. The bridge returns a normalized summary including album name, requested asset count, applied asset count, and any unresolved identifiers.
 
-The current Phase 4 baseline now covers the first half of this workflow: a dedicated bridge command can ensure the target album exists and return a normalized album summary before any asset identifiers are written into it.
+The current Phase 4 baseline now covers this full workflow shape: a dedicated bridge command can ensure the target album exists, resolve ordered `local_identifier` values back to `PHAsset`, and return a normalized mutation summary after album write-back.
 
-The Node-side album output flow now also prepares the second-half input contract before mutation: it consumes retrieval results directly, preserves rank order while deduplicating `local_identifier` values, carries the configured `album_write_mode`, and surfaces unresolved rows that still need write-back handling.
+The Node-side album output flow now prepares and executes the second-half mutation contract: it consumes retrieval results directly, preserves rank order while deduplicating `local_identifier` values, carries the configured `album_write_mode`, submits the payload to the Python bridge over stdin, and surfaces unresolved rows that still need CLI/debug handling.
 
 ### Album Write-Back Rules
 

@@ -1479,6 +1479,228 @@ def ensure_results_album(
     }
 
 
+def normalize_requested_local_identifiers(local_identifiers: object) -> Tuple[List[str], List[dict]]:
+    if not isinstance(local_identifiers, list):
+        return [], [
+            {
+                "result_id": None,
+                "local_identifier": None,
+                "reason": "invalid-local-identifier-list",
+            }
+        ]
+
+    normalized = []
+    unresolved = []
+    seen = set()
+
+    for raw_identifier in local_identifiers:
+        normalized_identifier = str(raw_identifier or "").strip()
+        if not normalized_identifier:
+            unresolved.append(
+                {
+                    "result_id": None,
+                    "local_identifier": None,
+                    "reason": "missing-local-identifier",
+                }
+            )
+            continue
+
+        if normalized_identifier in seen:
+            continue
+
+        seen.add(normalized_identifier)
+        normalized.append(normalized_identifier)
+
+    return normalized, unresolved
+
+
+def fetch_assets_by_local_identifier(
+    modules: Optional[Dict[str, object]], local_identifiers: List[str]
+) -> Tuple[List[object], List[str]]:
+    if not modules or not local_identifiers:
+        return [], list(local_identifiers)
+
+    PHAsset = modules["PHAsset"]
+    fetch_result = PHAsset.fetchAssetsWithLocalIdentifiers_options_(
+        local_identifiers, None
+    )
+    resolved_by_identifier = {}
+
+    for index in range(int(fetch_result.count())):
+        asset = fetch_result.objectAtIndex_(index)
+        local_identifier = read_native_member(asset, "localIdentifier")
+        if local_identifier:
+            resolved_by_identifier[str(local_identifier)] = asset
+
+    resolved_assets = []
+    unresolved_identifiers = []
+
+    for local_identifier in local_identifiers:
+        asset = resolved_by_identifier.get(local_identifier)
+        if asset is None:
+            unresolved_identifiers.append(local_identifier)
+            continue
+
+        resolved_assets.append(asset)
+
+    return resolved_assets, unresolved_identifiers
+
+
+def fetch_album_asset_fetch_result(modules: Optional[Dict[str, object]], album: object):
+    if not modules or album is None:
+        return None
+
+    PHAsset = modules["PHAsset"]
+    return PHAsset.fetchAssetsInAssetCollection_options_(album, None)
+
+
+def write_results_album(
+    modules: Optional[Dict[str, object]],
+    album_name: str,
+    requested_local_identifiers: object,
+    album_write_mode: str,
+    permission_status: str,
+) -> dict:
+    requested_name = str(album_name or "").strip()
+    normalized_write_mode = str(album_write_mode or "replace").strip() or "replace"
+    normalized_local_identifiers, unresolved_results = normalize_requested_local_identifiers(
+        requested_local_identifiers
+    )
+    requested_asset_count = len(normalized_local_identifiers)
+
+    if normalized_write_mode not in {"replace", "append"}:
+        return {
+            "implemented": False,
+            "album_name": requested_name,
+            "requested_album_name": requested_name,
+            "album_local_identifier": None,
+            "album_write_mode": normalized_write_mode,
+            "created": False,
+            "found_existing": False,
+            "requested_asset_count": requested_asset_count,
+            "applied_asset_count": 0,
+            "resolved_asset_count": 0,
+            "unresolved_results": unresolved_results,
+            "errors": [f"Unsupported album write mode: {normalized_write_mode}"],
+        }
+
+    album_state = ensure_results_album(modules, requested_name, permission_status)
+    if not album_state["implemented"]:
+        return {
+            "implemented": False,
+            "album_name": album_state["album_name"],
+            "requested_album_name": album_state["requested_album_name"],
+            "album_local_identifier": album_state["album_local_identifier"],
+            "album_write_mode": normalized_write_mode,
+            "created": album_state["created"],
+            "found_existing": album_state["found_existing"],
+            "requested_asset_count": requested_asset_count,
+            "applied_asset_count": 0,
+            "resolved_asset_count": 0,
+            "unresolved_results": unresolved_results,
+            "estimated_asset_count": album_state.get("estimated_asset_count"),
+            "errors": album_state["errors"],
+        }
+
+    album = fetch_user_album_by_name(modules, album_state["album_name"])
+    if album is None:
+        return {
+            "implemented": False,
+            "album_name": album_state["album_name"],
+            "requested_album_name": album_state["requested_album_name"],
+            "album_local_identifier": album_state["album_local_identifier"],
+            "album_write_mode": normalized_write_mode,
+            "created": album_state["created"],
+            "found_existing": album_state["found_existing"],
+            "requested_asset_count": requested_asset_count,
+            "applied_asset_count": 0,
+            "resolved_asset_count": 0,
+            "unresolved_results": unresolved_results,
+            "estimated_asset_count": album_state.get("estimated_asset_count"),
+            "errors": ["Album was ensured but could not be reloaded before asset mutation."],
+        }
+
+    resolved_assets, unresolved_identifiers = fetch_assets_by_local_identifier(
+        modules, normalized_local_identifiers
+    )
+    unresolved_results.extend(
+        [
+            {
+                "result_id": None,
+                "local_identifier": local_identifier,
+                "reason": "asset-not-found",
+            }
+            for local_identifier in unresolved_identifiers
+        ]
+    )
+
+    existing_assets = fetch_album_asset_fetch_result(modules, album)
+    existing_asset_count = 0 if existing_assets is None else int(existing_assets.count())
+    PHAssetCollectionChangeRequest = modules["PHAssetCollectionChangeRequest"] if modules else None
+
+    def change_handler() -> None:
+        change_request = PHAssetCollectionChangeRequest.changeRequestForAssetCollection_(
+            album
+        )
+        if normalized_write_mode == "replace" and existing_assets is not None:
+            change_request.removeAssets_(existing_assets)
+        if resolved_assets:
+            change_request.addAssets_(resolved_assets)
+
+    mutation = perform_photo_library_changes(modules, change_handler)
+    if not mutation["success"]:
+        return {
+            "implemented": False,
+            "album_name": album_state["album_name"],
+            "requested_album_name": album_state["requested_album_name"],
+            "album_local_identifier": album_state["album_local_identifier"],
+            "album_write_mode": normalized_write_mode,
+            "created": album_state["created"],
+            "found_existing": album_state["found_existing"],
+            "requested_asset_count": requested_asset_count,
+            "applied_asset_count": 0,
+            "resolved_asset_count": len(resolved_assets),
+            "unresolved_results": unresolved_results,
+            "estimated_asset_count": album_state.get("estimated_asset_count"),
+            "existing_asset_count_before_write": existing_asset_count,
+            "errors": [mutation["error"] or "Album write failed."],
+        }
+
+    refreshed_album = fetch_user_album_by_name(modules, album_state["album_name"]) or album
+    refreshed_summary = normalize_album_summary(
+        refreshed_album,
+        album_state["album_name"],
+        album_state["created"],
+        album_state["requested_album_name"],
+    )
+
+    return {
+        "implemented": True,
+        "album_name": refreshed_summary["album_name"],
+        "requested_album_name": refreshed_summary["requested_album_name"],
+        "album_local_identifier": refreshed_summary["album_local_identifier"],
+        "album_write_mode": normalized_write_mode,
+        "created": album_state["created"],
+        "found_existing": album_state["found_existing"],
+        "requested_asset_count": requested_asset_count,
+        "applied_asset_count": len(resolved_assets),
+        "resolved_asset_count": len(resolved_assets),
+        "unresolved_results": unresolved_results,
+        "estimated_asset_count": refreshed_summary["estimated_asset_count"],
+        "existing_asset_count_before_write": existing_asset_count,
+        "errors": [],
+    }
+
+
+def read_json_stdin_payload() -> dict:
+    raw_payload = sys.stdin.read()
+    if not raw_payload.strip():
+        return {}
+
+    parsed_payload = json.loads(raw_payload)
+    return parsed_payload if isinstance(parsed_payload, dict) else {}
+
+
 def handle_check_access() -> dict:
     payload = build_base_payload("check-access")
     _, modules = load_photos_runtime()
@@ -1764,6 +1986,52 @@ def handle_ensure_results_album(album_name: str) -> dict:
     return payload
 
 
+def handle_write_results_album(payload_input: dict) -> dict:
+    payload = build_base_payload("write-results-album")
+    _, modules = load_photos_runtime()
+    permission_status, raw_status = get_authorization_status(modules)
+    library_access, asset_count_probe = probe_library_access(permission_status, modules)
+    album_state = write_results_album(
+        modules,
+        payload_input.get("album_name", "AI Search Results"),
+        payload_input.get("local_identifiers", []),
+        payload_input.get("album_write_mode", "replace"),
+        permission_status,
+    )
+
+    payload.update(
+        {
+            "phase": "search",
+            "permission_status": permission_status,
+            "permission_status_raw": raw_status,
+            "library_access": library_access,
+            "asset_count_probe": asset_count_probe,
+            "album_name": album_state["album_name"],
+            "requested_album_name": album_state["requested_album_name"],
+            "album_local_identifier": album_state["album_local_identifier"],
+            "album_write_mode": album_state["album_write_mode"],
+            "created": album_state["created"],
+            "found_existing": album_state["found_existing"],
+            "estimated_asset_count": album_state.get("estimated_asset_count"),
+            "requested_asset_count": album_state["requested_asset_count"],
+            "resolved_asset_count": album_state["resolved_asset_count"],
+            "applied_asset_count": album_state["applied_asset_count"],
+            "existing_asset_count_before_write": album_state.get(
+                "existing_asset_count_before_write"
+            ),
+            "unresolved_results": album_state["unresolved_results"],
+            "implemented": album_state["implemented"],
+            "ok": album_state["implemented"],
+            "errors": payload["errors"] + album_state["errors"],
+            "notes": payload["notes"]
+            + [
+                "Album write-back resolves ordered localIdentifier values back to PHAsset instances and mutates the Photos album natively.",
+            ],
+        }
+    )
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1777,6 +2045,7 @@ def main() -> int:
             "probe-original-access",
             "extract-representations",
             "ensure-results-album",
+            "write-results-album",
         ],
     )
     parser.add_argument("--json", action="store_true")
@@ -1798,7 +2067,9 @@ def main() -> int:
         "--extract-timeout-seconds", type=int, default=DEFAULT_EXTRACT_TIMEOUT_SECONDS
     )
     parser.add_argument("--album-name", default="AI Search Results")
+    parser.add_argument("--payload-stdin", action="store_true")
     args = parser.parse_args()
+    stdin_payload = read_json_stdin_payload() if args.payload_stdin else {}
 
     handlers = {
         "check-access": handle_check_access,
@@ -1819,6 +2090,7 @@ def main() -> int:
             timeout_seconds=max(1, args.extract_timeout_seconds),
         ),
         "ensure-results-album": lambda: handle_ensure_results_album(args.album_name),
+        "write-results-album": lambda: handle_write_results_album(stdin_payload),
     }
     payload = handlers[args.command]()
 

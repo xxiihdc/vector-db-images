@@ -1,4 +1,7 @@
-import { ensurePhotosResultsAlbum } from "../../scanner/photos/bridge-client.js";
+import {
+  ensurePhotosResultsAlbum,
+  writePhotosResultsAlbum,
+} from "../../scanner/photos/bridge-client.js";
 import { AppError } from "../../shared/errors/app-error.js";
 
 function normalizeWriteMode(config) {
@@ -33,6 +36,7 @@ function normalizeAlbumName({ config, results }) {
 
 export function createAlbumService({
   ensureResultsAlbumFn = ensurePhotosResultsAlbum,
+  writeResultsAlbumFn = writePhotosResultsAlbum,
 } = {}) {
   async function ensureResultsAlbum({ config } = {}) {
     const albumName = config?.app?.results_album_name ?? "AI Search Results";
@@ -95,8 +99,37 @@ export function createAlbumService({
     };
   }
 
+  async function writeAlbumOutput({ results = [], config } = {}) {
+    const albumOutput = await buildAlbumOutput({ results, config });
+    const mutation = await Promise.resolve(
+      writeResultsAlbumFn({
+        albumName: albumOutput.album_name,
+        albumWriteMode: albumOutput.album_write_mode,
+        localIdentifiers: albumOutput.requested_local_identifiers,
+      })
+    );
+
+    return {
+      ...albumOutput,
+      ...mutation,
+      phase: "search",
+      requested_asset_count: albumOutput.requested_asset_count,
+      requested_local_identifiers: albumOutput.requested_local_identifiers,
+      results_received_count: albumOutput.results_received_count,
+      unresolved_results: [
+        ...albumOutput.unresolved_results,
+        ...(Array.isArray(mutation?.unresolved_results) ? mutation.unresolved_results : []),
+      ],
+      notes: [
+        "Album output flow normalized retrieval results into an ordered localIdentifier write-set.",
+        ...(Array.isArray(mutation?.notes) ? mutation.notes : []),
+      ],
+    };
+  }
+
   return {
     ensureResultsAlbum,
     buildAlbumOutput,
+    writeAlbumOutput,
   };
 }

@@ -109,14 +109,15 @@ Each retrieval result returned to an AI agent should include:
 3. rank image thumbnail và video poster frame embeddings bằng local similarity scoring
 4. trả về retrieval result đủ `local_identifier` để nối tiếp sang album write-back ở bước sau
 
-Ở cùng giai đoạn này, runtime cũng đã có path riêng để tạo hoặc tìm lại album `AI Search Results` trong Apple Photos trước khi bước ghi asset matches được nối vào.
+Ở cùng giai đoạn này, runtime cũng đã có path riêng để tạo hoặc tìm lại album `AI Search Results` trong Apple Photos.
 
 Album output flow hiện cũng đã có Node-side orchestration đủ để:
 
 1. nhận retrieval results
 2. ensure target album đã tồn tại
 3. chuẩn hóa ordered unique `local_identifier` list cho write-back
-4. giữ lại unresolved result rows để bước native album mutation xử lý tiếp
+4. gọi native Photos album mutation qua Python bridge để resolve `PHAsset` và update album theo `album_write_mode`
+5. giữ lại unresolved result rows để CLI/debug path báo rõ asset nào không resolve được
 
 For MVP setup, the runtime also defines two storage-facing contracts:
 

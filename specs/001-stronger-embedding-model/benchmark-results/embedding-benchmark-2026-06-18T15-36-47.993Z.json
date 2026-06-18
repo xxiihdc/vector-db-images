@@ -1,0 +1,62 @@
+{
+  "benchmark_name": "feature-001-default-query-pack",
+  "created_at": "2026-06-18T15:36:47.999Z",
+  "asset_limit": 50,
+  "query_limit": 5,
+  "query_pack_path": "/Users/hoaiduc/Documents/VectorDB Image/specs/001-stronger-embedding-model/benchmark-query-pack.json",
+  "query_pack": {
+    "name": "feature-001-default-query-pack",
+    "text_queries": [
+      "sunset beach",
+      "dog running",
+      "group photo indoors"
+    ]
+  },
+  "results": [
+    {
+      "rank": 1,
+      "candidate_id": "open-clip:ViT-B-32:laion2b_s34b_b79k:224",
+      "candidate_preset": "baseline",
+      "model_identity": "open-clip:ViT-B-32:laion2b_s34b_b79k",
+      "target_resolution": 224,
+      "configured_batch_size": 8,
+      "benchmark_batch_size": 8,
+      "capability_ok": true,
+      "runtime_device": "mps",
+      "recommended_extractor_size": 224,
+      "missing_requirements": [],
+      "indexing_status": "completed",
+      "indexing_items_per_second": 955.588,
+      "query_latency_ms": 2804.6,
+      "quality_notes": [
+        "index persisted 42 embeddings",
+        "sunset beach: top=0273F538-C2C6-4A73-A1A6-18BCF5366CC6/L0/001 score=0.3086",
+        "dog running: top=55B494FE-7BEE-4DFC-834B-81B254420966/L0/001 score=0.2812",
+        "group photo indoors: top=B8090289-4C6A-4FD0-A26B-828902107005/L0/001 score=0.2939"
+      ],
+      "status": "bench-passed",
+      "failure_mode": null
+    },
+    {
+      "rank": 2,
+      "candidate_id": "open-clip:ViT-H-14:laion2b_s32b_b79k:224",
+      "candidate_preset": "fallback-safe",
+      "model_identity": "open-clip:ViT-H-14:laion2b_s32b_b79k",
+      "target_resolution": 224,
+      "configured_batch_size": 2,
+      "benchmark_batch_size": 2,
+      "capability_ok": true,
+      "runtime_device": "mps",
+      "recommended_extractor_size": 224,
+      "missing_requirements": [],
+      "indexing_status": "failed",
+      "indexing_items_per_second": null,
+      "query_latency_ms": null,
+      "quality_notes": [
+        "Index pipeline failed after partially persisting completed chunks."
+      ],
+      "status": "bench-failed",
+      "failure_mode": "INDEX_PIPELINE_PARTIAL_FAILURE"
+    }
+  ]
+}

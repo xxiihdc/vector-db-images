@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Switch"
+  short_description: "Switch and benchmark embedding models"
+  default_prompt: "Use $model-switch to change the embedding model or candidate preset, benchmark it against the current model, reindex safely, and roll back cleanly if needed."

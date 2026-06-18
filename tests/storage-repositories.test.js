@@ -157,10 +157,27 @@ function cosineSimilarity(left = [], right = []) {
 
 function createMockQdrantFetch() {
   const state = {
-    collection: null,
-    points: new Map(),
+    collections: new Map(),
+    pointsByCollection: new Map(),
     calls: [],
   };
+
+  function getCollectionName(pathname) {
+    const match = pathname.match(/^\/collections\/([^/]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function getPointsMap(collectionName) {
+    const existing = state.pointsByCollection.get(collectionName);
+
+    if (existing) {
+      return existing;
+    }
+
+    const next = new Map();
+    state.pointsByCollection.set(collectionName, next);
+    return next;
+  }
 
   async function fetchFn(url, options = {}) {
     const parsedUrl = new URL(url);
@@ -173,13 +190,23 @@ function createMockQdrantFetch() {
       return createJsonResponse(200, {
         status: "ok",
         result: {
-          collections: state.collection ? [{ name: state.collection.name }] : [],
+          collections: Array.from(state.collections.values()).map((collection) => ({
+            name: collection.name,
+          })),
         },
       });
     }
 
-    if (pathname === "/collections/media-index" && method === "GET") {
-      if (!state.collection) {
+    const collectionName = getCollectionName(pathname);
+
+    if (
+      collectionName &&
+      pathname === `/collections/${encodeURIComponent(collectionName)}` &&
+      method === "GET"
+    ) {
+      const collection = state.collections.get(collectionName);
+
+      if (!collection) {
         return createJsonResponse(404, {
           status: "error",
           result: null,
@@ -192,8 +219,8 @@ function createMockQdrantFetch() {
           config: {
             params: {
               vectors: {
-                size: state.collection.size,
-                distance: state.collection.distance,
+                size: collection.size,
+                distance: collection.distance,
               },
             },
           },
@@ -201,21 +228,31 @@ function createMockQdrantFetch() {
       });
     }
 
-    if (pathname === "/collections/media-index" && method === "PUT") {
-      state.collection = {
-        name: "media-index",
+    if (
+      collectionName &&
+      pathname === `/collections/${encodeURIComponent(collectionName)}` &&
+      method === "PUT"
+    ) {
+      state.collections.set(collectionName, {
+        name: collectionName,
         size: body.vectors.size,
         distance: body.vectors.distance,
-      };
+      });
       return createJsonResponse(200, {
         status: "ok",
         result: true,
       });
     }
 
-    if (pathname === "/collections/media-index/points" && method === "PUT") {
+    if (
+      collectionName &&
+      pathname === `/collections/${encodeURIComponent(collectionName)}/points` &&
+      method === "PUT"
+    ) {
+      const points = getPointsMap(collectionName);
+
       for (const point of body.points ?? []) {
-        state.points.set(point.id, structuredClone(point));
+        points.set(point.id, structuredClone(point));
       }
 
       return createJsonResponse(200, {
@@ -227,8 +264,12 @@ function createMockQdrantFetch() {
       });
     }
 
-    if (pathname === "/collections/media-index/points/scroll" && method === "POST") {
-      const filteredPoints = Array.from(state.points.values())
+    if (
+      collectionName &&
+      pathname === `/collections/${encodeURIComponent(collectionName)}/points/scroll` &&
+      method === "POST"
+    ) {
+      const filteredPoints = Array.from(getPointsMap(collectionName).values())
         .filter((point) => matchesFilter(point, body?.filter))
         .map((point) => ({
           id: point.id,
@@ -245,8 +286,12 @@ function createMockQdrantFetch() {
       });
     }
 
-    if (pathname === "/collections/media-index/points/count" && method === "POST") {
-      const count = Array.from(state.points.values()).filter((point) =>
+    if (
+      collectionName &&
+      pathname === `/collections/${encodeURIComponent(collectionName)}/points/count` &&
+      method === "POST"
+    ) {
+      const count = Array.from(getPointsMap(collectionName).values()).filter((point) =>
         matchesFilter(point, body?.filter)
       ).length;
 
@@ -258,8 +303,12 @@ function createMockQdrantFetch() {
       });
     }
 
-    if (pathname === "/collections/media-index/points/query" && method === "POST") {
-      const hits = Array.from(state.points.values())
+    if (
+      collectionName &&
+      pathname === `/collections/${encodeURIComponent(collectionName)}/points/query` &&
+      method === "POST"
+    ) {
+      const hits = Array.from(getPointsMap(collectionName).values())
         .filter((point) => matchesFilter(point, body?.filter))
         .map((point) => ({
           id: point.id,
@@ -666,12 +715,143 @@ test("qdrant vector repository bulk upserts multiple embeddings in one points re
   ]);
 
   const pointsWrites = qdrant.state.calls.filter(
-    (call) => call.method === "PUT" && call.pathname === "/collections/media-index/points"
+    (call) => call.method === "PUT" && /\/collections\/.+\/points$/.test(call.pathname)
   );
 
   assert.equal(pointsWrites.length, 1);
   assert.equal(pointsWrites[0].body.points.length, 2);
+  assert.match(pointsWrites[0].pathname, /^\/collections\/media-index--.+\/points$/);
   assert.equal(await repository.countEmbeddings(), 2);
+});
+
+test("qdrant vector repository stores different model identities in separate collections", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+
+  await repository.initialize();
+
+  const baselineEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-split-baseline",
+    local_identifier: "QDRANT/SPLIT/BASELINE",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+    source_fingerprint: "fp:qdrant-split-baseline",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+  const fallbackEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-split-fallback",
+    local_identifier: "QDRANT/SPLIT/FALLBACK",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: "open-clip:ViT-H-14:laion2b_s32b_b79k",
+    source_fingerprint: "fp:qdrant-split-fallback",
+    indexed_at: "2026-06-18T10:00:01.000Z",
+  });
+
+  await repository.upsertEmbedding({
+    record: baselineEmbedding,
+    vector: [1, 0, 0],
+  });
+  await repository.upsertEmbedding({
+    record: fallbackEmbedding,
+    vector: [1, 0, 0, 0],
+  });
+
+  const createdCollectionCalls = qdrant.state.calls.filter(
+    (call) => call.method === "PUT" && /^\/collections\/[^/]+$/.test(call.pathname)
+  );
+  const baselineHits = await repository.searchByVector({
+    vector: [1, 0, 0],
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+  const fallbackHits = await repository.searchByVector({
+    vector: [1, 0, 0, 0],
+    embedding_model: "ViT-H-14",
+    model_identity: "open-clip:ViT-H-14:laion2b_s32b_b79k",
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+
+  assert.equal(createdCollectionCalls.length, 2);
+  assert.equal(qdrant.state.collections.size, 2);
+  assert.equal(baselineHits.length, 1);
+  assert.equal(fallbackHits.length, 1);
+  assert.equal(baselineHits[0].embedding.embedding_id, baselineEmbedding.embedding_id);
+  assert.equal(fallbackHits[0].embedding.embedding_id, fallbackEmbedding.embedding_id);
+});
+
+test("qdrant vector repository still reads legacy base collection for the requested model identity", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+
+  const legacyEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-legacy-baseline",
+    local_identifier: "QDRANT/LEGACY/BASELINE",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+    source_fingerprint: "fp:qdrant-legacy-baseline",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+  const legacyPointId = legacyEmbedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(
+      /^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/,
+      "$1-$2-$3-$4-$5"
+    );
+
+  qdrant.state.collections.set("media-index", {
+    name: "media-index",
+    size: 3,
+    distance: "Cosine",
+  });
+  qdrant.state.pointsByCollection.set(
+    "media-index",
+    new Map([
+      [
+        legacyPointId,
+        {
+          id: legacyPointId,
+          vector: [1, 0, 0],
+          payload: structuredClone(legacyEmbedding),
+        },
+      ],
+    ])
+  );
+
+  await repository.initialize();
+
+  const hits = await repository.searchByVector({
+    vector: [1, 0, 0],
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].embedding.embedding_id, legacyEmbedding.embedding_id);
 });
 
 test("index file command stores one local image with deterministic synthetic local identifier", async () => {

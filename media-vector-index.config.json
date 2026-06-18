@@ -35,14 +35,14 @@
   },
   "embedding": {
     "provider": "open-clip",
-    "candidate_preset": "baseline",
-    "model": "ViT-B-32",
-    "pretrained": "laion2b_s34b_b79k",
+    "candidate_preset": "fallback-safe",
+    "model": "ViT-H-14",
+    "pretrained": "laion2b_s32b_b79k",
     "device": "auto",
     "target_resolution": 224,
     "normalize": true,
-    "batch_size": 8,
-    "benchmark_batch_size": 8,
+    "batch_size": 2,
+    "benchmark_batch_size": 2,
     "benchmark_asset_limit": 50
   },
   "debug": {

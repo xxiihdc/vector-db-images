@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { AppError } from "../../shared/errors/app-error.js";
 import { buildEmbeddingRecord } from "../../indexer/records/embedding-record.js";
 import { createQdrantClient } from "./qdrant-client.js";
@@ -265,6 +266,31 @@ function normalizeUpsertItem(item = {}) {
   };
 }
 
+function normalizeCollectionSlugPart(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function buildScopedCollectionName(baseCollectionName, modelIdentity) {
+  if (!modelIdentity) {
+    return baseCollectionName;
+  }
+
+  const normalizedBase = normalizeCollectionSlugPart(baseCollectionName) || "media-index";
+  const normalizedIdentity =
+    normalizeCollectionSlugPart(modelIdentity).slice(0, 48) || "default-model";
+  const identityHash = createHash("sha1")
+    .update(String(modelIdentity))
+    .digest("hex")
+    .slice(0, 12);
+
+  return `${normalizedBase}--${normalizedIdentity}--${identityHash}`;
+}
+
 export function createQdrantVectorRepository({
   serviceUrl,
   collectionName,
@@ -290,26 +316,102 @@ export function createQdrantVectorRepository({
     timeoutMs,
     fetchFn,
   });
-  let cachedCollection = null;
+  const cachedCollections = new Map();
+  let knownCollectionNames = null;
 
-  async function getCollectionInfo() {
-    return client.getCollection(collectionName);
+  function isManagedCollectionName(name) {
+    return name === collectionName || String(name ?? "").startsWith(`${collectionName}--`);
   }
 
-  function cacheCollectionInfo(info) {
-    cachedCollection = info;
+  function cacheCollectionInfo(name, info) {
+    cachedCollections.set(name, info ?? null);
     return info;
   }
 
-  async function ensureCollection(vectorSize) {
+  function markKnownCollectionName(name) {
+    if (!name) {
+      return;
+    }
+
+    if (knownCollectionNames === null) {
+      knownCollectionNames = [];
+    }
+
+    if (!knownCollectionNames.includes(name)) {
+      knownCollectionNames.push(name);
+      knownCollectionNames.sort();
+    }
+  }
+
+  async function listCollectionNames() {
+    if (knownCollectionNames !== null) {
+      return [...knownCollectionNames];
+    }
+
+    const payload = await client.listCollections();
+    knownCollectionNames = (payload?.result?.collections ?? [])
+      .map((entry) => entry?.name)
+      .filter(Boolean)
+      .sort();
+    return [...knownCollectionNames];
+  }
+
+  async function getCollectionInfo(targetCollectionName = collectionName) {
+    if (cachedCollections.has(targetCollectionName)) {
+      return cachedCollections.get(targetCollectionName);
+    }
+
+    const info = await client.getCollection(targetCollectionName);
+
+    if (info) {
+      markKnownCollectionName(targetCollectionName);
+    }
+
+    return cacheCollectionInfo(targetCollectionName, info);
+  }
+
+  async function listManagedCollectionNames() {
+    const collectionNames = await listCollectionNames();
+    return collectionNames.filter((name) => isManagedCollectionName(name));
+  }
+
+  async function resolveReadCollectionNames(modelIdentity = null) {
+    const preferredCollectionName = buildScopedCollectionName(collectionName, modelIdentity);
+    const existingManagedCollections = await listManagedCollectionNames();
+    const candidateNames = [];
+
+    if (modelIdentity) {
+      candidateNames.push(preferredCollectionName);
+
+      if (collectionName !== preferredCollectionName) {
+        candidateNames.push(collectionName);
+      }
+    } else {
+      candidateNames.push(...existingManagedCollections);
+
+      if (!candidateNames.includes(collectionName)) {
+        candidateNames.push(collectionName);
+      }
+    }
+
+    return Array.from(new Set(candidateNames)).filter((name) => {
+      if (name === preferredCollectionName) {
+        return true;
+      }
+
+      return existingManagedCollections.includes(name);
+    });
+  }
+
+  async function ensureCollection(targetCollectionName, vectorSize) {
     if (!Number.isFinite(vectorSize) || vectorSize <= 0) {
       throw new AppError("Qdrant collection creation requires a non-empty vector size.", {
         code: "VECTOR_DIMENSIONS_REQUIRED",
-        details: { collection_name: collectionName, vector_size: vectorSize ?? null },
+        details: { collection_name: targetCollectionName, vector_size: vectorSize ?? null },
       });
     }
 
-    const existing = cachedCollection ?? (await getCollectionInfo());
+    const existing = await getCollectionInfo(targetCollectionName);
 
     if (existing) {
       const vectorsConfig = extractCollectionVectorConfig(existing);
@@ -317,11 +419,11 @@ export function createQdrantVectorRepository({
 
       if (configuredSize && configuredSize !== vectorSize) {
         throw new AppError(
-          `Qdrant collection \`${collectionName}\` already exists with vector size ${configuredSize}, expected ${vectorSize}.`,
+          `Qdrant collection \`${targetCollectionName}\` already exists with vector size ${configuredSize}, expected ${vectorSize}.`,
           {
             code: "VECTOR_DIMENSIONS_MISMATCH",
             details: {
-              collection_name: collectionName,
+              collection_name: targetCollectionName,
               configured_size: configuredSize,
               expected_size: vectorSize,
             },
@@ -329,10 +431,10 @@ export function createQdrantVectorRepository({
         );
       }
 
-      return cacheCollectionInfo(existing);
+      return cacheCollectionInfo(targetCollectionName, existing);
     }
 
-    await client.createCollection(collectionName, {
+    await client.createCollection(targetCollectionName, {
       vectors: {
         size: vectorSize,
         distance: qdrantDistance,
@@ -340,17 +442,41 @@ export function createQdrantVectorRepository({
       on_disk_payload: true,
     });
 
-    return cacheCollectionInfo(await getCollectionInfo());
+    markKnownCollectionName(targetCollectionName);
+    return cacheCollectionInfo(targetCollectionName, await client.getCollection(targetCollectionName));
+  }
+
+  async function resolveSearchableCollectionNames({ modelIdentity, vectorSize = null } = {}) {
+    const names = await resolveReadCollectionNames(modelIdentity);
+    const resolvedNames = [];
+
+    for (const name of names) {
+      const collection = await getCollectionInfo(name);
+
+      if (!collection) {
+        continue;
+      }
+
+      const vectorsConfig = extractCollectionVectorConfig(collection);
+      const configuredSize = vectorsConfig?.size ?? vectorsConfig?.default?.size ?? null;
+
+      if (
+        Number.isFinite(vectorSize) &&
+        Number.isFinite(configuredSize) &&
+        configuredSize !== vectorSize
+      ) {
+        continue;
+      }
+
+      resolvedNames.push(name);
+    }
+
+    return resolvedNames;
   }
 
   async function initialize() {
     try {
-      await client.listCollections();
-      const collection = await getCollectionInfo();
-
-      if (collection) {
-        cacheCollectionInfo(collection);
-      }
+      const managedCollections = await listManagedCollectionNames();
 
       return {
         backend: "qdrant",
@@ -358,7 +484,9 @@ export function createQdrantVectorRepository({
         collection_name: collectionName,
         distance: qdrantDistance,
         reachable: true,
-        collection_exists: Boolean(collection),
+        collection_exists: managedCollections.length > 0,
+        collection_strategy: "per-model-identity",
+        managed_collection_names: managedCollections,
       };
     } catch (error) {
       if (error instanceof AppError && error.code === "VECTOR_BACKEND_UNREACHABLE") {
@@ -377,45 +505,52 @@ export function createQdrantVectorRepository({
     includeVector = false,
     pageSize = 128,
   } = {}) {
-    const collection = cachedCollection ?? (await getCollectionInfo());
-
-    if (!collection) {
-      return [];
-    }
-
-    cacheCollectionInfo(collection);
+    const collectionNames = await resolveReadCollectionNames(filters.model_identity);
     const items = [];
-    let offset = null;
+    const seenEmbeddingIds = new Set();
 
-    do {
-      const response = await client.scrollPoints(collectionName, {
-        limit: pageSize,
-        filter: buildPayloadFilter(filters),
-        with_payload: true,
-        with_vector: includeVector,
-        ...(offset ? { offset } : {}),
-      });
-      const points = extractPointArray(response);
-      const nextPageOffset = extractNextPageOffset(response);
+    for (const targetCollectionName of collectionNames) {
+      const collection = await getCollectionInfo(targetCollectionName);
 
-      for (const point of points) {
-        items.push(normalizePointRecord(point, { includeVector }));
+      if (!collection) {
+        continue;
       }
 
-      offset = nextPageOffset;
-    } while (offset);
+      let offset = null;
+
+      do {
+        const response = await client.scrollPoints(targetCollectionName, {
+          limit: pageSize,
+          filter: buildPayloadFilter(filters),
+          with_payload: true,
+          with_vector: includeVector,
+          ...(offset ? { offset } : {}),
+        });
+        const points = extractPointArray(response);
+        const nextPageOffset = extractNextPageOffset(response);
+
+        for (const point of points) {
+          const record = normalizePointRecord(point, { includeVector });
+
+          if (record.embedding_id && seenEmbeddingIds.has(record.embedding_id)) {
+            continue;
+          }
+
+          if (record.embedding_id) {
+            seenEmbeddingIds.add(record.embedding_id);
+          }
+
+          items.push(record);
+        }
+
+        offset = nextPageOffset;
+      } while (offset);
+    }
 
     return postFilterEmbeddings(items, filters);
   }
 
   async function countEmbeddings(filters = {}) {
-    const collection = cachedCollection ?? (await getCollectionInfo());
-
-    if (!collection) {
-      return 0;
-    }
-
-    cacheCollectionInfo(collection);
     const needsPostFilter =
       (Array.isArray(filters.statuses) && filters.statuses.length > 0) ||
       (Array.isArray(filters.representation_kinds) && filters.representation_kinds.length > 0);
@@ -425,12 +560,24 @@ export function createQdrantVectorRepository({
       return embeddings.length;
     }
 
-    const response = await client.countPoints(collectionName, {
-      exact: true,
-      filter: buildPayloadFilter(filters),
-    });
+    const collectionNames = await resolveReadCollectionNames(filters.model_identity);
+    let total = 0;
 
-    return extractCount(response);
+    for (const targetCollectionName of collectionNames) {
+      const collection = await getCollectionInfo(targetCollectionName);
+
+      if (!collection) {
+        continue;
+      }
+
+      const response = await client.countPoints(targetCollectionName, {
+        exact: true,
+        filter: buildPayloadFilter(filters),
+      });
+      total += extractCount(response);
+    }
+
+    return total;
   }
 
   async function getEmbeddingById(embeddingId, { includeVector = false } = {}) {
@@ -464,36 +611,50 @@ export function createQdrantVectorRepository({
     }
 
     const normalizedItems = items.map((item) => normalizeUpsertItem(item));
-    const vectorSize = normalizedItems[0].vector.length;
+    const itemsByCollection = new Map();
 
     for (const item of normalizedItems) {
-      if (item.vector.length !== vectorSize) {
-        throw new AppError("All vectors in a bulk upsert must have the same dimensions.", {
-          code: "VECTOR_DIMENSIONS_MISMATCH",
-          details: {
-            collection_name: collectionName,
-            expected_size: vectorSize,
-            received_size: item.vector.length,
-            embedding_id: item.record.embedding_id,
-          },
-        });
-      }
+      const targetCollectionName = buildScopedCollectionName(
+        collectionName,
+        item.record.model_identity
+      );
+      const existing = itemsByCollection.get(targetCollectionName) ?? [];
+      existing.push(item);
+      itemsByCollection.set(targetCollectionName, existing);
     }
 
-    await ensureCollection(vectorSize);
+    for (const [targetCollectionName, groupedItems] of itemsByCollection.entries()) {
+      const vectorSize = groupedItems[0].vector.length;
 
-    await client.upsertPoints(
-      collectionName,
-      normalizedItems.map(({ record: normalizedRecord, vector: normalizedVector }) => ({
-        id: toPointId(normalizedRecord.embedding_id),
-        vector: normalizedVector,
-        payload: {
-          ...normalizedRecord,
-          embedding_dimensions:
-            normalizedRecord.embedding_dimensions ?? normalizedVector.length,
-        },
-      }))
-    );
+      for (const item of groupedItems) {
+        if (item.vector.length !== vectorSize) {
+          throw new AppError("All vectors in a bulk upsert must have the same dimensions.", {
+            code: "VECTOR_DIMENSIONS_MISMATCH",
+            details: {
+              collection_name: targetCollectionName,
+              expected_size: vectorSize,
+              received_size: item.vector.length,
+              embedding_id: item.record.embedding_id,
+            },
+          });
+        }
+      }
+
+      await ensureCollection(targetCollectionName, vectorSize);
+
+      await client.upsertPoints(
+        targetCollectionName,
+        groupedItems.map(({ record: normalizedRecord, vector: normalizedVector }) => ({
+          id: toPointId(normalizedRecord.embedding_id),
+          vector: normalizedVector,
+          payload: {
+            ...normalizedRecord,
+            embedding_dimensions:
+              normalizedRecord.embedding_dimensions ?? normalizedVector.length,
+          },
+        }))
+      );
+    }
 
     return normalizedItems.map(({ record }) => record);
   }
@@ -550,27 +711,37 @@ export function createQdrantVectorRepository({
     representation_kinds = [],
     limit = 10,
   } = {}) {
-    const collection = cachedCollection ?? (await getCollectionInfo());
+    const collectionNames = await resolveSearchableCollectionNames({
+      modelIdentity: model_identity,
+      vectorSize: Array.isArray(vector) ? vector.length : null,
+    });
 
-    if (!collection) {
+    if (collectionNames.length === 0) {
       return [];
     }
 
-    cacheCollectionInfo(collection);
     const overfetchLimit = Math.min(Math.max(limit * 5, limit), 200);
-    const response = await client.queryPoints(collectionName, {
-      query: vector.map(Number),
-      filter: buildPayloadFilter({ embedding_model, model_identity }),
-      limit: overfetchLimit,
-      with_payload: true,
-      with_vector: false,
-    });
-    const points = extractPointArray(response);
-    const hits = points
-      .map((point) => ({
-        embedding: normalizePointRecord(point),
-        score: Number(point?.score ?? 0),
-      }))
+    const hits = [];
+
+    for (const targetCollectionName of collectionNames) {
+      const response = await client.queryPoints(targetCollectionName, {
+        query: vector.map(Number),
+        filter: buildPayloadFilter({ embedding_model, model_identity }),
+        limit: overfetchLimit,
+        with_payload: true,
+        with_vector: false,
+      });
+      const points = extractPointArray(response);
+
+      hits.push(
+        ...points.map((point) => ({
+          embedding: normalizePointRecord(point),
+          score: Number(point?.score ?? 0),
+        }))
+      );
+    }
+
+    return hits
       .filter(({ embedding }) =>
         postFilterEmbeddings([embedding], {
           embedding_model,
@@ -579,9 +750,8 @@ export function createQdrantVectorRepository({
           statuses: ["ready", "stale"],
         }).length > 0
       )
-      .sort((left, right) => right.score - left.score);
-
-    return hits.slice(0, limit);
+      .sort((left, right) => right.score - left.score)
+      .slice(0, limit);
   }
 
   return {

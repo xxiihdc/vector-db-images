@@ -800,6 +800,7 @@ def compose_storyboard_jpeg_bytes(
         NSCompositingOperationCopy,
         NSGraphicsContext,
         NSImage,
+        NSRectFill,
     )
 
     normalized_images = [image for image in cg_images if image is not None]

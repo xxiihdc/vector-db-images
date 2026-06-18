@@ -5,7 +5,7 @@ export async function runReindexCommand({ cwd, args = [] }) {
     cwd,
     args,
     defaultUseCache: false,
-    summary: "Re-index refresh completed.",
+    summary: "Re-index refresh completed for the active model identity.",
     commandLabel: "reindex",
   });
 }

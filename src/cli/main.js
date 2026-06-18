@@ -12,6 +12,7 @@ import { runPhotosProbeOriginalsCommand } from "./commands/photos-probe-original
 import { runPhotosExtractCommand } from "./commands/photos-extract.js";
 import { runPhotosCapabilitiesCommand } from "./commands/photos-capabilities.js";
 import { runEmbeddingCapabilitiesCommand } from "./commands/embedding-capabilities.js";
+import { runEmbeddingBenchmarkCommand } from "./commands/embedding-benchmark.js";
 import { runIndexCommand } from "./commands/index.js";
 import { runReindexCommand } from "./commands/reindex.js";
 import { runSearchCommand } from "./commands/search.js";
@@ -86,6 +87,10 @@ async function dispatch(argv) {
 
   if (command === "embedding" && subcommand === "capabilities") {
     return runEmbeddingCapabilitiesCommand({ cwd, args: rest });
+  }
+
+  if (command === "embedding" && subcommand === "benchmark") {
+    return runEmbeddingBenchmarkCommand({ cwd, args: rest });
   }
 
   throw new AppError("Unknown command.", {

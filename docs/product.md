@@ -88,6 +88,8 @@ Passing `--no-cache` on `index` forces the same refresh path as `reindex`.
 
 At this stage, the index pipeline is wired through a real embedding provider abstraction. The first configured path is `open-clip`, and its pretrained checkpoint can be downloaded automatically on first use when the machine has internet access.
 
+For model-upgrade safety, the operator-visible workflow should treat `candidate_preset`, `(provider, model, pretrained)`, and extraction resolution as one rollout unit. Changing that unit must create or query vectors under a different `model_identity` so the user can test a stronger rung, then roll back to baseline, without manual vector-store cleanup.
+
 The working debug flow should start with a lightweight capability probe so dependency or runtime mismatches are separated from extraction logic failures early.
 
 For long-running full-library indexing, the Photos bridge should not behave like a black box: native extraction progress is expected to stream live to the terminal so the user can tell whether the bottleneck is a specific asset, video storyboard generation, or simple scale.

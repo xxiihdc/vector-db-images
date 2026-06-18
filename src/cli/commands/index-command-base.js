@@ -2,6 +2,7 @@ import { loadConfig } from "../../config/load-config.js";
 import { createStorageRepositories } from "../../storage/migrations/migration-runner.js";
 import { createIndexPipeline } from "../../indexer/pipeline/index-pipeline.js";
 import { formatStorageSummaryLines } from "../../storage/storage-layout.js";
+import { resolveOpenClipCandidate } from "../../embedding/providers/open-clip/model-candidates.js";
 
 function readIntegerFlag(args, name, fallback) {
   const index = args.indexOf(name);
@@ -142,6 +143,7 @@ export async function runIndexLikeCommand({
 } = {}) {
   const configState = await loadConfigFn(cwd);
   const { config } = configState;
+  const candidate = resolveOpenClipCandidate(config);
   const limit = readIntegerFlag(args, "--limit", config.scanner?.batch_size ?? 200);
   const timeoutSeconds = readIntegerFlag(args, "--timeout-seconds", 30);
   const progressEvery = readIntegerFlag(args, "--progress-every", 10);
@@ -195,6 +197,9 @@ export async function runIndexLikeCommand({
     lines: [
       `Command: ${commandLabel}`,
       `Config present: ${configState.exists ? "yes" : "no"}`,
+      `Active model identity: ${candidate.model_identity}`,
+      `Active candidate preset: ${candidate.candidate_preset ?? "custom"}`,
+      `Target extractor resolution: ${candidate.target_resolution ?? "unknown"}`,
       `Cache mode: ${result.cache_mode}`,
       `Framework connection: ${result.scan_state.framework_connection ?? "cache"}`,
       `Permission status: ${result.scan_state.permission_status ?? "cache"}`,
@@ -211,6 +216,7 @@ export async function runIndexLikeCommand({
       `Skipped representations: ${result.skipped_representation_count}`,
       `Total time: ${(Number(timings.total_ms ?? 0) / 1000).toFixed(2)}s`,
       `Slowest stage: ${slowestStage.stage ?? "none"} (${(Number(slowestStage.duration_ms ?? 0) / 1000).toFixed(2)}s, ${Number(slowestStage.percent_of_total ?? 0).toFixed(2)}% total)`,
+      `Re-index guidance: after changing embedding preset/model/pretrained/resolution, run \`mvi reindex --limit N\` or \`mvi index --no-cache --limit N\` to build vectors under the new model identity without manual cleanup.`,
       ...formatStorageSummaryLines({
         storageRoot: storageState.storageRoot,
         catalogDbPath: storageState.catalogDbPath,

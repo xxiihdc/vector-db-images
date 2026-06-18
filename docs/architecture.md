@@ -812,6 +812,7 @@ For each scanned asset:
 2. If `local_identifier` already exists and `source_fingerprint` is unchanged, keep the existing asset row.
 3. If `source_fingerprint` changed, keep the same asset row but mark related embeddings as candidates for refresh.
 4. If the configured extraction settings or embedding model changed, embeddings must also be considered refresh candidates even when `source_fingerprint` is unchanged.
+5. The active read path must scope cache hits and vector queries by full `model_identity`, not only by `embedding_model`, so rollback to a baseline preset never reuses upgraded vectors by mistake.
 
 ### Embedding Refresh Policy
 
@@ -819,6 +820,7 @@ For each scanned asset:
 2. If the stored `content_fingerprint` differs from the newly computed target fingerprint, schedule re-embedding.
 3. If a refresh succeeds, write the new embedding row or update the existing active row and mark it `ready`.
 4. If a refresh fails temporarily, keep the prior `ready` embedding searchable and mark the new refresh attempt state as `stale` or retryable rather than removing the asset from the active index.
+5. Embedding rows should also retain rollout metadata such as `candidate_preset`, `target_resolution`, and `extraction_signature` so debug and rollback evidence remain operator-readable.
 
 ### Temporary Failure Rule
 

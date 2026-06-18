@@ -88,6 +88,8 @@ Ghi chú:
 - `index --no-cache` và `reindex` đều đi theo refresh path.
 - `reindex` không cần thêm `--no-cache`.
 - `reindex --limit N` chỉ refresh phạm vi đó, không xóa asset ngoài phạm vi refresh.
+- Nếu đổi `embedding.candidate_preset`, `embedding.model`, `embedding.pretrained`, hoặc `embedding.target_resolution`, hãy chạy `reindex` hoặc `index --no-cache` để build vector mới dưới `model_identity` mới.
+- Cache read chỉ reuse embedding khớp đúng `model_identity` đang active; không cần cleanup tay khi quay lại baseline model.
 
 ### Search bằng text
 
@@ -203,7 +205,9 @@ Những field đáng chú ý:
 - `extractor.image_thumbnail_size`: kích thước thumbnail ảnh
 - `extractor.video_strategy`: hiện hỗ trợ `storyboard` hoặc `poster-frame`
 - `retriever.write_to_photos_results_album`: cho phép tắt ghi album khi test
+- `embedding.candidate_preset`: preset rung đang active, ví dụ `baseline` hoặc `fallback-safe`
 - `embedding.provider`, `embedding.model`, `embedding.pretrained`: model setup hiện tại
+- `embedding.target_resolution`: resolution phải đi cùng model hiện tại để benchmark/reindex fair
 
 Sau khi đổi `DEFAULT_CONFIG`, không sửa sample config bằng tay. Dùng:
 
@@ -222,6 +226,8 @@ npm run verify:embedding
 npm run verify:search-core
 npm run verify:image-search -- /absolute/path/to/exported-image.jpg
 ```
+
+`npm run verify:index-cache` hiện verify cả rollback flow cơ bản: cache hit với config hiện tại, refresh với preset nâng cấp, rồi refresh lại sau khi restore baseline config.
 
 ## Hành vi runtime quan trọng
 

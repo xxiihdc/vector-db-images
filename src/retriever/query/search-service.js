@@ -51,12 +51,14 @@ export function createSearchService({
     const [searchedEmbeddingCount, searchHits] = await Promise.all([
       vectorRepository.countEmbeddings({
         embedding_model: embeddingModel,
+        model_identity: modelIdentity,
         representation_kinds: representationKinds,
         statuses: ["ready", "stale"],
       }),
       vectorRepository.searchByVector({
         vector: queryVector,
         embedding_model: embeddingModel,
+        model_identity: modelIdentity,
         representation_kinds: representationKinds,
         limit: searchLimit,
       }),

@@ -125,6 +125,7 @@ function filterEmbeddings(embeddings, filters = {}) {
     asset_id,
     embedding_id,
     embedding_model,
+    model_identity,
     local_identifier,
     representation_kind,
     representation_kinds = [],
@@ -141,6 +142,10 @@ function filterEmbeddings(embeddings, filters = {}) {
     }
 
     if (embedding_model && embedding.embedding_model !== embedding_model) {
+      return false;
+    }
+
+    if (model_identity && embedding.model_identity !== model_identity) {
       return false;
     }
 
@@ -385,12 +390,14 @@ export function createJsonVectorRepository({ filePath }) {
     asset_id,
     representation_kind,
     embedding_model,
+    model_identity,
   }) {
     const store = await loadStore(filePath);
     const vectorRefs = new Set(store.vectors.map((vector) => vector.vector_ref));
     const candidates = filterEmbeddings(store.embeddings, {
       asset_id,
       embedding_model,
+      model_identity,
       representation_kind,
       statuses: ["ready", "stale"],
     })
@@ -411,6 +418,7 @@ export function createJsonVectorRepository({ filePath }) {
 
   async function listActiveEmbeddings({
     embedding_model,
+    model_identity,
     representation_kinds = [],
   } = {}) {
     const store = await loadStore(filePath);
@@ -419,6 +427,7 @@ export function createJsonVectorRepository({ filePath }) {
 
     for (const embedding of filterEmbeddings(store.embeddings, {
       embedding_model,
+      model_identity,
       representation_kinds,
       statuses: ["ready", "stale"],
     })) {
@@ -429,7 +438,7 @@ export function createJsonVectorRepository({ filePath }) {
       const groupKey = [
         embedding.asset_id,
         embedding.representation_kind,
-        embedding.embedding_model,
+        embedding.model_identity ?? embedding.embedding_model,
       ].join("::");
       const current = groupedCandidates.get(groupKey);
 
@@ -462,11 +471,13 @@ export function createJsonVectorRepository({ filePath }) {
   async function searchByVector({
     vector,
     embedding_model,
+    model_identity,
     representation_kinds = [],
     limit = 10,
   } = {}) {
     const activeEmbeddings = await listActiveEmbeddings({
       embedding_model,
+      model_identity,
       representation_kinds,
     });
 

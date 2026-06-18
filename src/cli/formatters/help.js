@@ -19,5 +19,6 @@ export function buildHelpText() {
     "  mvi photos probe-originals [--json]",
     "  mvi photos extract [--limit 10] [--timeout-seconds 30] [--json]",
     "  mvi embedding capabilities [--json]",
+    "  mvi embedding benchmark [--candidates baseline,stretch,high-end] [--asset-limit 50] [--query-limit 5] [--query-pack <path>] [--json]",
   ].join("\n");
 }

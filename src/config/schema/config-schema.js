@@ -76,6 +76,24 @@ export function validateConfig(config) {
     );
   }
 
+  for (const field of [
+    "embedding.target_resolution",
+    "embedding.batch_size",
+    "embedding.benchmark_batch_size",
+    "embedding.benchmark_asset_limit",
+    "indexer.extraction_batch_size",
+  ]) {
+    const [section, key] = field.split(".");
+    const value = config?.[section]?.[key];
+
+    if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
+      throw new AppError(`Config field ${field} must be a positive integer.`, {
+        code: "CONFIG_FIELD_INVALID",
+        details: { field, value },
+      });
+    }
+  }
+
   const videoStrategy = config.extractor?.video_strategy;
   if (
     videoStrategy !== undefined &&

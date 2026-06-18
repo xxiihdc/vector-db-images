@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Coverage Check"
+  short_description: "Audit plan coverage against repo code"
+  default_prompt: "Use $plan-coverage-check to compare a feature plan against the current repository and report what is implemented, partial, or missing."

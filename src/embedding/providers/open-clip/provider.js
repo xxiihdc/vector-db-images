@@ -1,6 +1,10 @@
 import { AppError } from "../../../shared/errors/app-error.js";
 import { runOpenClipEmbeddingBridge } from "./python-bridge.js";
 import { normalizeCapabilityRequirements } from "./remediation.js";
+import {
+  buildOpenClipModelIdentity,
+  resolveOpenClipCandidate,
+} from "./model-candidates.js";
 
 function normalizeVector(vector) {
   if (!Array.isArray(vector) || vector.length === 0) {
@@ -13,14 +17,28 @@ function normalizeVector(vector) {
 
 export function createOpenClipEmbeddingProvider({
   config,
+  candidate = resolveOpenClipCandidate(config),
   bridgeRunner = runOpenClipEmbeddingBridge,
 } = {}) {
-  const providerKey = config?.embedding?.provider ?? "open-clip";
-  const modelKey = config?.embedding?.model ?? "ViT-B-32";
-  const pretrainedKey = config?.embedding?.pretrained ?? "laion2b_s34b_b79k";
+  const providerKey = candidate.provider ?? config?.embedding?.provider ?? "open-clip";
+  const modelKey = candidate.model ?? config?.embedding?.model ?? "ViT-B-32";
+  const pretrainedKey =
+    candidate.pretrained ?? config?.embedding?.pretrained ?? "laion2b_s34b_b79k";
   const device = config?.embedding?.device ?? "auto";
   const normalizeEmbeddings = config?.embedding?.normalize !== false;
-  const batchSize = config?.embedding?.batch_size ?? 8;
+  const batchSize = candidate.batch_size ?? config?.embedding?.batch_size ?? 8;
+  const targetResolution =
+    candidate.target_resolution ??
+    config?.embedding?.target_resolution ??
+    config?.extractor?.image_thumbnail_size ??
+    224;
+  const modelIdentity =
+    candidate.model_identity ??
+    buildOpenClipModelIdentity({
+      provider: providerKey,
+      model: modelKey,
+      pretrained: pretrainedKey,
+    });
 
   async function embedRepresentations({ representations = [] } = {}) {
     if (!Array.isArray(representations) || representations.length === 0) {
@@ -31,9 +49,14 @@ export function createOpenClipEmbeddingProvider({
       provider: providerKey,
       model: modelKey,
       pretrained: pretrainedKey,
+      candidate_id: candidate.candidate_id ?? null,
+      candidate_preset: candidate.candidate_preset ?? null,
       device,
       normalize: normalizeEmbeddings,
       batch_size: batchSize,
+      target_resolution: targetResolution,
+      requires_timm: candidate.requires_timm ?? false,
+      requires_transformers: candidate.requires_transformers ?? false,
       representations: representations.map((representation) => ({
         local_identifier: representation.local_identifier ?? null,
         representation_kind: representation.representation_kind ?? null,
@@ -80,8 +103,7 @@ export function createOpenClipEmbeddingProvider({
         vector,
         embedding_provider: embedding?.embedding_provider ?? providerKey,
         embedding_model: embedding?.embedding_model ?? modelKey,
-        model_identity:
-          embedding?.model_identity ?? `${providerKey}:${modelKey}:${pretrainedKey}`,
+        model_identity: embedding?.model_identity ?? modelIdentity,
         error_code: embedding?.error_code ?? null,
         error_message: embedding?.error_message ?? null,
       };
@@ -94,8 +116,13 @@ export function createOpenClipEmbeddingProvider({
       provider: providerKey,
       model: modelKey,
       pretrained: pretrainedKey,
+      candidate_id: candidate.candidate_id ?? null,
+      candidate_preset: candidate.candidate_preset ?? null,
       device,
       normalize: normalizeEmbeddings,
+      target_resolution: targetResolution,
+      requires_timm: candidate.requires_timm ?? false,
+      requires_transformers: candidate.requires_transformers ?? false,
       text: normalizedText,
     });
 
@@ -145,8 +172,7 @@ export function createOpenClipEmbeddingProvider({
       vector,
       embedding_provider: payload.embedding.embedding_provider ?? providerKey,
       embedding_model: payload.embedding.embedding_model ?? modelKey,
-      model_identity:
-        payload.embedding.model_identity ?? `${providerKey}:${modelKey}:${pretrainedKey}`,
+      model_identity: payload.embedding.model_identity ?? modelIdentity,
     };
   }
 
@@ -183,15 +209,18 @@ export function createOpenClipEmbeddingProvider({
       vector: embedding.vector,
       embedding_provider: embedding.embedding_provider ?? providerKey,
       embedding_model: embedding.embedding_model ?? modelKey,
-      model_identity:
-        embedding.model_identity ?? `${providerKey}:${modelKey}:${pretrainedKey}`,
+      model_identity: embedding.model_identity ?? modelIdentity,
     };
   }
 
   return {
     providerKey,
     modelKey,
-    modelIdentity: `${providerKey}:${modelKey}:${pretrainedKey}`,
+    modelIdentity: modelIdentity,
+    candidateId: candidate.candidate_id ?? null,
+    candidatePreset: candidate.candidate_preset ?? null,
+    targetResolution,
+    batchSize,
     embedRepresentations,
     embedQuery,
     embedImageQuery,

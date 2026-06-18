@@ -84,12 +84,16 @@ export function buildSourceFingerprint(payload = {}) {
 export function buildContentFingerprint(payload = {}) {
   const sourceFingerprint = payload.source_fingerprint ?? buildSourceFingerprint(payload);
   const modelKey = buildEmbeddingModelKey(payload) ?? "unknown-model";
-  const extractionSignature =
+  const extractionSignatureParts = [
     payload.extraction_signature ??
-    payload.extractor_signature ??
-    payload.image_thumbnail_size ??
-    payload.video_strategy ??
-    "default";
+      payload.extractor_signature ??
+      payload.image_thumbnail_size ??
+      payload.video_strategy ??
+      "default",
+    payload.target_resolution ?? null,
+    payload.candidate_preset ?? null,
+  ].filter((part) => part !== null && part !== undefined && String(part).trim() !== "");
+  const extractionSignature = extractionSignatureParts.join("|");
 
   return [
     sourceFingerprint ?? "null",

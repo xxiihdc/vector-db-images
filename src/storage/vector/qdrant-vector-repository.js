@@ -140,6 +140,15 @@ function buildPayloadFilter(filters = {}) {
     });
   }
 
+  if (filters.model_identity) {
+    must.push({
+      key: "model_identity",
+      match: {
+        value: filters.model_identity,
+      },
+    });
+  }
+
   if (filters.representation_kind) {
     must.push({
       key: "representation_kind",
@@ -155,6 +164,7 @@ function buildPayloadFilter(filters = {}) {
 function postFilterEmbeddings(embeddings, filters = {}) {
   const {
     embedding_model,
+    model_identity,
     representation_kind,
     representation_kinds = [],
     statuses = [],
@@ -162,6 +172,10 @@ function postFilterEmbeddings(embeddings, filters = {}) {
 
   return embeddings.filter((embedding) => {
     if (embedding_model && embedding.embedding_model !== embedding_model) {
+      return false;
+    }
+
+    if (model_identity && embedding.model_identity !== model_identity) {
       return false;
     }
 
@@ -513,11 +527,13 @@ export function createQdrantVectorRepository({
     asset_id,
     representation_kind,
     embedding_model,
+    model_identity,
   } = {}) {
     const embeddings = await scrollEmbeddings({
       filters: {
         asset_id,
         embedding_model,
+        model_identity,
         representation_kind,
         statuses: ["ready", "stale"],
       },
@@ -530,6 +546,7 @@ export function createQdrantVectorRepository({
   async function searchByVector({
     vector,
     embedding_model,
+    model_identity,
     representation_kinds = [],
     limit = 10,
   } = {}) {
@@ -543,7 +560,7 @@ export function createQdrantVectorRepository({
     const overfetchLimit = Math.min(Math.max(limit * 5, limit), 200);
     const response = await client.queryPoints(collectionName, {
       query: vector.map(Number),
-      filter: buildPayloadFilter({ embedding_model }),
+      filter: buildPayloadFilter({ embedding_model, model_identity }),
       limit: overfetchLimit,
       with_payload: true,
       with_vector: false,
@@ -557,6 +574,7 @@ export function createQdrantVectorRepository({
       .filter(({ embedding }) =>
         postFilterEmbeddings([embedding], {
           embedding_model,
+          model_identity,
           representation_kinds,
           statuses: ["ready", "stale"],
         }).length > 0

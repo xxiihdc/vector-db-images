@@ -15,6 +15,7 @@
     "verify:storage": "npm run test:storage && node ./src/cli/main.js init --force",
     "verify:index-cache": "npm run test:storage && node ./scripts/verify-index-cache.js",
     "verify:embedding": "node ./scripts/verify-embedding.js",
+    "verify:embedding-benchmark": "node ./scripts/verify-embedding-benchmark.js",
     "verify:search-core": "node ./scripts/verify-search-core.js",
     "verify:image-search": "node ./scripts/verify-image-search.js",
     "docs:check": "npm run config:check-sample && node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",

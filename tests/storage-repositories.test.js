@@ -302,6 +302,41 @@ test("asset record builder creates deterministic ids and source fingerprint", as
   );
 });
 
+test("embedding record keeps candidate metadata and changes fingerprint when rollout settings change", async () => {
+  const baseline = buildEmbeddingRecord({
+    asset_id: "asset:001",
+    local_identifier: "IMG/001",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+    candidate_preset: "baseline",
+    target_resolution: 224,
+    source_fingerprint: "fp:001",
+    extraction_signature: "image-thumbnail:224",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+  const upgrade = buildEmbeddingRecord({
+    asset_id: "asset:001",
+    local_identifier: "IMG/001",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: "open-clip:ViT-H-14:laion2b_s32b_b79k",
+    candidate_preset: "fallback-safe",
+    target_resolution: 378,
+    source_fingerprint: "fp:001",
+    extraction_signature: "image-thumbnail:378",
+    indexed_at: "2026-06-18T11:00:00.000Z",
+  });
+
+  assert.equal(baseline.candidate_preset, "baseline");
+  assert.equal(baseline.target_resolution, 224);
+  assert.equal(baseline.extraction_signature, "image-thumbnail:224");
+  assert.notEqual(baseline.content_fingerprint, upgrade.content_fingerprint);
+  assert.notEqual(baseline.embedding_id, upgrade.embedding_id);
+});
+
 test("catalog repository upserts by local identifier without duplicates", async () => {
   await withTempDir(async (tempDir) => {
     const repository = createCatalogRepository({
@@ -373,6 +408,80 @@ test("vector repository returns stale embedding as active fallback when ready ve
   });
 });
 
+test("vector repository filters active embedding and vector search by model identity", async () => {
+  await withTempDir(async (tempDir) => {
+    const repository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await repository.initialize();
+
+    const firstEmbedding = buildEmbeddingRecord({
+      asset_id: "asset:model-identity-json",
+      local_identifier: "JSON/MODEL/001",
+      representation_kind: "image-thumbnail",
+      embedding_provider: "open-clip",
+      embedding_model: "ViT-B-32",
+      model_identity: "open-clip:ViT-B-32:baseline",
+      source_fingerprint: "fp:model-identity-json",
+      indexed_at: "2026-06-18T08:00:00.000Z",
+    });
+    const secondEmbedding = buildEmbeddingRecord({
+      asset_id: "asset:model-identity-json",
+      local_identifier: "JSON/MODEL/001",
+      representation_kind: "image-thumbnail",
+      embedding_provider: "open-clip",
+      embedding_model: "ViT-B-32",
+      model_identity: "open-clip:ViT-B-32:upgrade",
+      source_fingerprint: "fp:model-identity-json",
+      indexed_at: "2026-06-18T09:00:00.000Z",
+    });
+
+    await repository.saveEmbedding({
+      record: firstEmbedding,
+      vector: [1, 0, 0],
+    });
+    await repository.saveEmbedding({
+      record: secondEmbedding,
+      vector: [0, 1, 0],
+    });
+
+    const baselineActive = await repository.getActiveEmbedding({
+      asset_id: firstEmbedding.asset_id,
+      representation_kind: "image-thumbnail",
+      embedding_model: "ViT-B-32",
+      model_identity: "open-clip:ViT-B-32:baseline",
+    });
+    const upgradeActive = await repository.getActiveEmbedding({
+      asset_id: firstEmbedding.asset_id,
+      representation_kind: "image-thumbnail",
+      embedding_model: "ViT-B-32",
+      model_identity: "open-clip:ViT-B-32:upgrade",
+    });
+    const baselineHits = await repository.searchByVector({
+      vector: [1, 0, 0],
+      embedding_model: "ViT-B-32",
+      model_identity: "open-clip:ViT-B-32:baseline",
+      representation_kinds: ["image-thumbnail"],
+      limit: 5,
+    });
+    const upgradeHits = await repository.searchByVector({
+      vector: [0, 1, 0],
+      embedding_model: "ViT-B-32",
+      model_identity: "open-clip:ViT-B-32:upgrade",
+      representation_kinds: ["image-thumbnail"],
+      limit: 5,
+    });
+
+    assert.equal(baselineActive.embedding_id, firstEmbedding.embedding_id);
+    assert.equal(upgradeActive.embedding_id, secondEmbedding.embedding_id);
+    assert.equal(baselineHits.length, 1);
+    assert.equal(upgradeHits.length, 1);
+    assert.equal(baselineHits[0].embedding.embedding_id, firstEmbedding.embedding_id);
+    assert.equal(upgradeHits[0].embedding.embedding_id, secondEmbedding.embedding_id);
+  });
+});
+
 test("qdrant vector repository upserts without duplicates and keeps stale embedding searchable", async () => {
   const qdrant = createMockQdrantFetch();
   const repository = createVectorRepository({
@@ -433,6 +542,83 @@ test("qdrant vector repository upserts without duplicates and keeps stale embedd
   assert.equal(active.status, "stale");
   assert.equal(searchHits.length, 1);
   assert.equal(searchHits[0].embedding.embedding_id, embedding.embedding_id);
+});
+
+test("qdrant vector repository filters active embedding and vector search by model identity", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+
+  await repository.initialize();
+
+  const baselineEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-model-identity",
+    local_identifier: "QDRANT/MODEL/001",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:baseline",
+    source_fingerprint: "fp:qdrant-model-identity",
+    indexed_at: "2026-06-18T09:00:00.000Z",
+  });
+  const upgradeEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-model-identity",
+    local_identifier: "QDRANT/MODEL/001",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:upgrade",
+    source_fingerprint: "fp:qdrant-model-identity",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+
+  await repository.upsertEmbedding({
+    record: baselineEmbedding,
+    vector: [1, 0, 0],
+  });
+  await repository.upsertEmbedding({
+    record: upgradeEmbedding,
+    vector: [0, 1, 0],
+  });
+
+  const baselineActive = await repository.getActiveEmbedding({
+    asset_id: baselineEmbedding.asset_id,
+    representation_kind: "image-thumbnail",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:baseline",
+  });
+  const upgradeActive = await repository.getActiveEmbedding({
+    asset_id: baselineEmbedding.asset_id,
+    representation_kind: "image-thumbnail",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:upgrade",
+  });
+  const baselineHits = await repository.searchByVector({
+    vector: [1, 0, 0],
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:baseline",
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+  const upgradeHits = await repository.searchByVector({
+    vector: [0, 1, 0],
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:upgrade",
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+
+  assert.equal(baselineActive.embedding_id, baselineEmbedding.embedding_id);
+  assert.equal(upgradeActive.embedding_id, upgradeEmbedding.embedding_id);
+  assert.equal(baselineHits.length, 1);
+  assert.equal(upgradeHits.length, 1);
+  assert.equal(baselineHits[0].embedding.embedding_id, baselineEmbedding.embedding_id);
+  assert.equal(upgradeHits[0].embedding.embedding_id, upgradeEmbedding.embedding_id);
 });
 
 test("qdrant vector repository bulk upserts multiple embeddings in one points request", async () => {
@@ -831,6 +1017,7 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
       representation_kind: "image-thumbnail",
       embedding_provider: "open-clip",
       embedding_model: DEFAULT_CONFIG.embedding.model,
+      model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
       source_fingerprint: cachedAsset.source_fingerprint,
       indexed_at: "2026-06-17T12:00:00.000Z",
       extraction_signature: "image-thumbnail:224",
@@ -910,6 +1097,7 @@ test("index pipeline cache hit still reuses legacy video poster frame embeddings
       representation_kind: "video-poster-frame",
       embedding_provider: "open-clip",
       embedding_model: DEFAULT_CONFIG.embedding.model,
+      model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
       source_fingerprint: cachedAsset.source_fingerprint,
       indexed_at: "2026-06-18T08:00:00.000Z",
       extraction_signature: "video-poster-frame:224",
@@ -947,7 +1135,87 @@ test("index pipeline cache hit still reuses legacy video poster frame embeddings
   });
 });
 
+test("index pipeline cache hit does not reuse embeddings from a different model identity", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const cachedAsset = await catalogRepository.upsertAsset({
+      local_identifier: "IMG/L0/DIFFMODEL",
+      asset_type: "image",
+      pixel_width: 4032,
+      pixel_height: 3024,
+      modification_date: "2026-06-18T08:00:00.000Z",
+      indexed_at: "2026-06-18T08:00:00.000Z",
+      last_seen_at: "2026-06-18T08:00:00.000Z",
+    });
+
+    await vectorRepository.saveEmbedding({
+      record: buildEmbeddingRecord({
+        asset_id: cachedAsset.asset_id,
+        local_identifier: cachedAsset.local_identifier,
+        representation_kind: "image-thumbnail",
+        embedding_provider: "open-clip",
+        embedding_model: DEFAULT_CONFIG.embedding.model,
+        model_identity: "open-clip:ViT-B-32:older-pretrained",
+        source_fingerprint: cachedAsset.source_fingerprint,
+        indexed_at: "2026-06-18T08:00:00.000Z",
+        extraction_signature: "image-thumbnail:224",
+      }),
+      vector: Array.from({ length: 8 }, (_, index) => index / 10),
+    });
+
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: () => {
+        throw new Error("scan should not run on cache hit");
+      },
+      extractRepresentationsFn: () => {
+        throw new Error("extract should not run on cache hit");
+      },
+      catalogRepository,
+      vectorRepository,
+      clock: (() => {
+        const values = [0, 0, 5];
+        let index = 0;
+        return () => values[index++] ?? values[values.length - 1];
+      })(),
+    });
+
+    const result = await pipeline.run({
+      config: structuredClone(DEFAULT_CONFIG),
+      limit: 1,
+      timeoutSeconds: 30,
+      useCache: true,
+    });
+
+    assert.equal(result.cache_mode, "hit");
+    assert.equal(result.persisted_asset_count, 0);
+    assert.equal(result.persisted_embedding_count, 0);
+    assert.equal(result.skipped_representation_count, 1);
+    assert.deepEqual(result.breakdown.skip_reasons, [
+      { name: "missing-active-embedding", count: 1 },
+    ]);
+  });
+});
+
 test("index command profile output includes timings, throughput, and breakdown", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.embedding = {
+    ...(config.embedding ?? {}),
+    candidate_preset: "fallback-safe",
+    model: "ViT-H-14",
+    pretrained: "laion2b_s32b_b79k",
+    target_resolution: 378,
+  };
   const result = await runIndexLikeCommand({
     cwd: "/tmp/mvi",
     args: ["--limit", "100", "--no-cache", "--profile"],
@@ -955,7 +1223,7 @@ test("index command profile output includes timings, throughput, and breakdown",
     summary: "Index completed.",
     commandLabel: "index",
     loadConfigFn: async () => ({
-      config: structuredClone(DEFAULT_CONFIG),
+      config,
       configPath: "/tmp/mvi/media-vector-index.config.json",
       exists: true,
     }),
@@ -1041,6 +1309,15 @@ test("index command profile output includes timings, throughput, and breakdown",
   assert.ok(result.lines.includes("Throughput persist: 112.500 embeddings/sec"));
   assert.ok(result.lines.includes("Representation breakdown: image 80, video 15"));
   assert.ok(result.lines.includes("Top skip reasons: timeout:3, missing-avasset:2"));
+  assert.ok(
+    result.lines.includes("Active model identity: open-clip:ViT-H-14:laion2b_s32b_b79k")
+  );
+  assert.ok(result.lines.includes("Active candidate preset: fallback-safe"));
+  assert.ok(result.lines.includes("Target extractor resolution: 378"));
+  assert.equal(
+    result.lines.some((line) => line.includes("Re-index guidance: after changing embedding preset/model/pretrained/resolution")),
+    true
+  );
 });
 
 test("index pipeline extracts in chunks to avoid oversized bridge payloads", async () => {
@@ -1640,6 +1917,64 @@ test("search service rejects empty queries", async () => {
       }
     );
   });
+});
+
+test("search service queries vector repository by model identity", async () => {
+  const calls = [];
+  const searchService = createSearchService({
+    catalogRepository: {
+      async getAssetByAssetId(assetId) {
+        return {
+          asset_id: assetId,
+          local_identifier: "IMG/IDENTITY/001",
+          asset_type: "image",
+        };
+      },
+    },
+    vectorRepository: {
+      async countEmbeddings(filters) {
+        calls.push({ fn: "countEmbeddings", filters });
+        return 1;
+      },
+      async searchByVector(filters) {
+        calls.push({ fn: "searchByVector", filters });
+        return [
+          {
+            embedding: {
+              asset_id: "asset:identity-1",
+              embedding_id: "embedding:identity-1",
+              representation_kind: "image-thumbnail",
+              source_fingerprint: "fp:identity-1",
+              embedding_dimensions: 3,
+              indexed_at: "2026-06-18T10:00:00.000Z",
+            },
+            score: 0.99,
+          },
+        ];
+      },
+    },
+    createEmbeddingProviderFn: () => ({
+      async embedQuery({ text }) {
+        return {
+          text,
+          vector: [1, 0, 0],
+          embedding_provider: "open-clip",
+          embedding_model: "ViT-B-32",
+          model_identity: "open-clip:ViT-B-32:special-pretrained",
+        };
+      },
+    }),
+  });
+
+  const result = await searchService.search({
+    query: "identity check",
+    config: structuredClone(DEFAULT_CONFIG),
+    limit: 5,
+  });
+
+  assert.equal(result.result_count, 1);
+  assert.equal(calls[0].filters.model_identity, "open-clip:ViT-B-32:special-pretrained");
+  assert.equal(calls[1].filters.model_identity, "open-clip:ViT-B-32:special-pretrained");
 });
 
 test("album service ensures results album using configured album name", async () => {

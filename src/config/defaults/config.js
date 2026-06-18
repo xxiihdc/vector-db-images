@@ -1,4 +1,8 @@
 import { createDefaultStorageConfig } from "../../storage/storage-layout.js";
+import {
+  DEFAULT_BENCHMARK_ASSET_LIMIT,
+  DEFAULT_OPEN_CLIP_CANDIDATE_PRESET,
+} from "../../embedding/providers/open-clip/model-candidates.js";
 
 export const DEFAULT_CONFIG_FILE_NAME = "media-vector-index.config.json";
 
@@ -21,6 +25,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   },
   indexer: {
     write_batch_size: 64,
+    extraction_batch_size: 200,
     reindex_mode: "incremental",
   },
   retriever: {
@@ -30,11 +35,15 @@ export const DEFAULT_CONFIG = Object.freeze({
   },
   embedding: {
     provider: "open-clip",
+    candidate_preset: DEFAULT_OPEN_CLIP_CANDIDATE_PRESET,
     model: "ViT-B-32",
     pretrained: "laion2b_s34b_b79k",
     device: "auto",
+    target_resolution: 224,
     normalize: true,
     batch_size: 8,
+    benchmark_batch_size: 8,
+    benchmark_asset_limit: DEFAULT_BENCHMARK_ASSET_LIMIT,
   },
   debug: {
     save_diagnostics: false,

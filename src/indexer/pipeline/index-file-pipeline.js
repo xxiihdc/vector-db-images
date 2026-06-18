@@ -63,6 +63,11 @@ export async function indexLocalImageFile({
     representations: [representation],
   });
   const readyEmbedding = requireReadyEmbedding(embedding, imageFile.absolute_path);
+  const extractorResolution =
+    embeddingProvider.targetResolution ??
+    config?.embedding?.target_resolution ??
+    config?.extractor?.image_thumbnail_size ??
+    224;
 
   await catalogRepository.upsertAsset(assetRecord);
   const embeddingRecord = buildEmbeddingRecord({
@@ -72,8 +77,10 @@ export async function indexLocalImageFile({
     embedding_provider: readyEmbedding.embedding_provider,
     embedding_model: readyEmbedding.embedding_model,
     model_identity: readyEmbedding.model_identity,
+    candidate_preset: embeddingProvider.candidatePreset,
+    target_resolution: extractorResolution,
     source_fingerprint: imageFile.source_fingerprint,
-    extraction_signature: "external-file:image-thumbnail",
+    extraction_signature: `external-file:image-thumbnail:${extractorResolution}`,
     indexed_at: indexedAt,
     status: "ready",
   });

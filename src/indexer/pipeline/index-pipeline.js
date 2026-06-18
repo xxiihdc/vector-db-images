@@ -50,6 +50,18 @@ function getPreferredVideoRepresentationKinds(config) {
   return [preferredKind, fallbackKind];
 }
 
+function getConfiguredModelIdentity(config) {
+  if (!config?.embedding?.provider || !config?.embedding?.model) {
+    return null;
+  }
+
+  return [
+    config.embedding.provider,
+    config.embedding.model,
+    config.embedding.pretrained ?? "unknown",
+  ].join(":");
+}
+
 function createEmptyVectorIndexState() {
   return {
     implemented: true,
@@ -244,6 +256,7 @@ async function buildCachedIndexState({
         asset_id: asset.asset_id,
         representation_kind: representationKind,
         embedding_model: config.embedding?.model ?? "phase3-placeholder",
+        model_identity: getConfiguredModelIdentity(config),
       });
 
       if (activeEmbedding) {
@@ -314,9 +327,7 @@ async function buildCachedIndexState({
       attempted_representations: persistedEmbeddings.length,
       ready_embeddings: persistedEmbeddings.length,
       provider_model_identity:
-        config.embedding?.provider && config.embedding?.model
-          ? `${config.embedding.provider}:${config.embedding.model}:${config.embedding?.pretrained ?? "unknown"}`
-          : null,
+        getConfiguredModelIdentity(config),
     },
     scanned_asset_count: cachedAssets.length,
     extracted_representation_count: 0,
@@ -391,10 +402,6 @@ export function createIndexPipeline({
       scanned_asset_count: scanState.valid_asset_count ?? scanState.assets?.length ?? 0,
       duration_ms: scanMs,
     });
-    reportProgress("extract-start", {
-      limit: limit ?? config.scanner?.batch_size ?? 200,
-      thumbnail_size: config.extractor?.image_thumbnail_size ?? 224,
-    });
     const extractionChunkSize = Math.max(
       1,
       Math.min(
@@ -413,6 +420,15 @@ export function createIndexPipeline({
       scanState.valid_asset_count ?? scanState.assets?.length ?? 0;
     const timestamp = now();
     const embeddingProvider = createEmbeddingProviderFn({ config });
+    const extractorResolution =
+      embeddingProvider.targetResolution ??
+      config?.embedding?.target_resolution ??
+      config.extractor?.image_thumbnail_size ??
+      224;
+    reportProgress("extract-start", {
+      limit: limit ?? config.scanner?.batch_size ?? 200,
+      thumbnail_size: extractorResolution,
+    });
     const scannedAssetsById = new Map(
       (scanState.assets ?? []).map((asset) => [asset.local_identifier, asset])
     );
@@ -439,7 +455,7 @@ export function createIndexPipeline({
             allowNetworkAccess: config.extractor?.allow_network_access ?? true,
             limit: chunkLimit,
             offset: extractionOffset,
-            thumbnailSize: config.extractor?.image_thumbnail_size ?? 224,
+            thumbnailSize: extractorResolution,
             videoStrategy: config.extractor?.video_strategy ?? "storyboard",
             timeoutSeconds,
           })
@@ -550,19 +566,21 @@ export function createIndexPipeline({
               continue;
             }
 
-            const embeddingRecord = buildEmbeddingRecord({
+          const embeddingRecord = buildEmbeddingRecord({
               asset_id: persistedAsset.asset_id,
               local_identifier: persistedAsset.local_identifier,
               representation_kind: representation.representation_kind,
               embedding_provider: embeddingResult.embedding_provider,
               embedding_model: embeddingResult.embedding_model,
               model_identity: embeddingResult.model_identity,
+              candidate_preset: embeddingProvider.candidatePreset,
+              target_resolution: extractorResolution,
               embedding_dimensions: embeddingResult.vector.length,
               source_fingerprint: persistedAsset.source_fingerprint,
               indexed_at: timestamp,
               extraction_signature: buildExtractionSignature({
                 representation,
-                thumbnailSize: config.extractor?.image_thumbnail_size ?? 224,
+                thumbnailSize: extractorResolution,
                 videoStrategy: config.extractor?.video_strategy ?? "poster-frame",
               }),
             });

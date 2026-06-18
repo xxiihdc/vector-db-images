@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import importlib.util
 import json
 import platform
 import sys
@@ -123,6 +124,120 @@ def build_runtime_requirements(runtime: Dict[str, Any]) -> List[Dict[str, Any]]:
     return requirements
 
 
+def has_optional_module(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def build_candidate_requirements(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    requirements: List[Dict[str, Any]] = []
+
+    if bool(payload.get("requires_timm")) and not has_optional_module("timm"):
+        requirements.append(
+            {
+                "kind": "python-library",
+                "name": "timm",
+                "status": "missing",
+                "install_command": "python3 -m pip install timm",
+                "message": "Install timm because this OpenCLIP candidate depends on timm-backed vision model components.",
+            }
+        )
+
+    if bool(payload.get("requires_transformers")) and not has_optional_module("transformers"):
+        requirements.append(
+            {
+                "kind": "python-library",
+                "name": "transformers",
+                "status": "missing",
+                "install_command": "python3 -m pip install transformers",
+                "message": "Install transformers because this candidate uses a text tower that requires Hugging Face transformers.",
+            }
+        )
+
+    return requirements
+
+
+def build_candidate_metadata(payload: Dict[str, Any], provider: str, model: str, pretrained: str) -> Dict[str, Any]:
+    target_resolution = int(payload.get("target_resolution") or 224)
+    candidate_id = payload.get("candidate_id") or f"{provider}:{model}:{pretrained}:{target_resolution}"
+
+    return {
+        "candidate_id": candidate_id,
+        "candidate_preset": payload.get("candidate_preset"),
+        "target_resolution": target_resolution,
+        "recommended_extractor_size": target_resolution,
+        "requires_timm": bool(payload.get("requires_timm")),
+        "requires_transformers": bool(payload.get("requires_transformers")),
+    }
+
+
+def classify_model_load_failure(error: Exception) -> List[Dict[str, Any]]:
+    message = str(error)
+    normalized = message.lower()
+    requirements: List[Dict[str, Any]] = []
+
+    if "timm" in normalized:
+        requirements.append(
+            {
+                "kind": "python-library",
+                "name": "timm",
+                "status": "missing",
+                "install_command": "python3 -m pip install timm",
+                "message": "This model load failed because timm-backed components are unavailable.",
+            }
+        )
+
+    if "transformers" in normalized:
+        requirements.append(
+            {
+                "kind": "python-library",
+                "name": "transformers",
+                "status": "missing",
+                "install_command": "python3 -m pip install transformers",
+                "message": "This model load failed because transformers-backed text components are unavailable.",
+            }
+        )
+
+    if not requirements:
+        requirements.append(
+            {
+                "kind": "network-or-cache",
+                "name": "pretrained model download",
+                "status": "missing",
+                "install_command": None,
+                "message": "Ensure the machine has internet access on first run so OpenCLIP can download pretrained weights, or warm the cache ahead of time.",
+            }
+        )
+
+    return requirements
+
+
+def try_load_open_clip_model(
+    runtime: Dict[str, Any],
+    *,
+    model: str,
+    pretrained: str,
+    runtime_device: str,
+) -> Dict[str, Any]:
+    open_clip = runtime["open_clip"]
+
+    try:
+        model_instance, _, _ = open_clip.create_model_and_transforms(
+            model, pretrained=pretrained, device=runtime_device
+        )
+        model_instance.eval()
+        return {
+            "load_ok": True,
+            "load_error": None,
+            "requirements": [],
+        }
+    except Exception as error:
+        return {
+            "load_ok": False,
+            "load_error": str(error),
+            "requirements": classify_model_load_failure(error),
+        }
+
+
 def decode_representation_image(runtime: Dict[str, Any], bytes_base64: str):
     image_bytes = base64.b64decode(bytes_base64)
     image = runtime["Image"].open(BytesIO(image_bytes))
@@ -182,13 +297,15 @@ def embed_image_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     result = build_base_payload("embed-image-batch", provider, model, pretrained)
     runtime = load_runtime()
     result["errors"].extend(runtime["errors"])
-    result["requirements"] = build_runtime_requirements(runtime)
+    result["requirements"] = build_runtime_requirements(runtime) + build_candidate_requirements(payload)
+    result["candidate"] = build_candidate_metadata(payload, provider, model, pretrained)
     result["capabilities"] = {
       "torch_available": runtime["torch_available"],
       "open_clip_available": runtime["open_clip_available"],
       "pillow_available": runtime["pillow_available"],
       "runtime_device": select_runtime_device(runtime, device),
       "downloads_model_on_first_run": True,
+      "recommended_extractor_size": result["candidate"]["recommended_extractor_size"],
     }
 
     if result["requirements"]:
@@ -298,13 +415,15 @@ def embed_text_query(payload: Dict[str, Any]) -> Dict[str, Any]:
     result = build_base_payload("embed-text-query", provider, model, pretrained)
     runtime = load_runtime()
     result["errors"].extend(runtime["errors"])
-    result["requirements"] = build_runtime_requirements(runtime)
+    result["requirements"] = build_runtime_requirements(runtime) + build_candidate_requirements(payload)
+    result["candidate"] = build_candidate_metadata(payload, provider, model, pretrained)
     result["capabilities"] = {
         "torch_available": runtime["torch_available"],
         "open_clip_available": runtime["open_clip_available"],
         "pillow_available": runtime["pillow_available"],
         "runtime_device": select_runtime_device(runtime, device),
         "downloads_model_on_first_run": True,
+        "recommended_extractor_size": result["candidate"]["recommended_extractor_size"],
     }
 
     if result["requirements"]:
@@ -389,16 +508,33 @@ def handle_capabilities(payload: Dict[str, Any]) -> Dict[str, Any]:
     result = build_base_payload("capabilities", provider, model, pretrained)
     runtime = load_runtime()
     result["errors"].extend(runtime["errors"])
-    result["requirements"] = build_runtime_requirements(runtime)
+    result["requirements"] = build_runtime_requirements(runtime) + build_candidate_requirements(payload)
+    result["candidate"] = build_candidate_metadata(payload, provider, model, pretrained)
+    runtime_device = select_runtime_device(runtime, device)
     result["capabilities"] = {
         "platform": platform.system(),
         "torch_available": runtime["torch_available"],
         "open_clip_available": runtime["open_clip_available"],
         "pillow_available": runtime["pillow_available"],
-        "runtime_device": select_runtime_device(runtime, device),
+        "runtime_device": runtime_device,
         "downloads_model_on_first_run": True,
+        "recommended_extractor_size": result["candidate"]["recommended_extractor_size"],
+        "load_ok": False,
+        "load_error": None,
     }
-    result["ok"] = len(result["requirements"]) == 0
+
+    if len(result["requirements"]) == 0:
+        load_state = try_load_open_clip_model(
+            runtime,
+            model=model,
+            pretrained=pretrained,
+            runtime_device=runtime_device,
+        )
+        result["capabilities"]["load_ok"] = load_state["load_ok"]
+        result["capabilities"]["load_error"] = load_state["load_error"]
+        result["requirements"].extend(load_state["requirements"])
+
+    result["ok"] = len(result["requirements"]) == 0 and result["capabilities"]["load_ok"] is True
     return result
 
 

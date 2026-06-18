@@ -140,8 +140,11 @@ Nếu cần chọn ưu tiên kỹ thuật tiếp theo, hãy ưu tiên:
 
 Repo hiện có skill nội bộ `specialist-agent-flow`, nhưng chỉ dùng khi task thực sự cần route qua vai trò chuyên biệt; không bắt buộc cho mọi task.
 
+Khi cần rà nhanh một `plan.md` đã được impl đến đâu so với code hiện tại, ưu tiên dùng skill nội bộ `.agents/skills/plan-coverage-check/` và giữ mọi script kiểm tra ở đó thay vì thêm vào runtime surface của dự án.
+
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read `docs/product.md`, `docs/architecture.md`, and `README.md`.
-If a separate plan file exists in the workspace, use it explicitly. If no plan file exists, state that no plan file is available.
+Use this active plan file when the task matches model-upgrade work: `specs/001-stronger-embedding-model/plan.md`.
+If a separate plan file does not match the current task, state that no relevant plan file is available.
 <!-- SPECKIT END -->

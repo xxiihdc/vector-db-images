@@ -13,7 +13,7 @@ export async function runIndexCommand({ cwd, args = [] }) {
     cwd,
     args,
     defaultUseCache: true,
-    summary: "Minimum index pipeline completed.",
+    summary: "Index pipeline completed with explicit active model identity.",
     commandLabel: "index",
   });
 }

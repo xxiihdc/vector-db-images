@@ -29,7 +29,8 @@
   },
   "retriever": {
     "default_limit": 50,
-    "album_write_mode": "replace"
+    "album_write_mode": "replace",
+    "write_to_photos_results_album": false
   },
   "embedding": {
     "provider": "open-clip",

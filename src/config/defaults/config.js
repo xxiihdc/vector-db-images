@@ -26,6 +26,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   retriever: {
     default_limit: 50,
     album_write_mode: "replace",
+    write_to_photos_results_album: true,
   },
   embedding: {
     provider: "open-clip",

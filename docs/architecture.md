@@ -37,6 +37,7 @@ The first runtime layout should keep CLI orchestration separate from media-proce
 
 ```text
 src/
+  app/
   cli/
   config/
   scanner/
@@ -44,6 +45,7 @@ src/
   enrichment/
   indexer/
   retriever/
+  server/
   storage/
   shared/
 ```
@@ -54,6 +56,8 @@ The first design pass should go one level deeper than top-level folders so the n
 
 ```text
 src/
+  app/
+    search/
   cli/
     commands/
     formatters/
@@ -80,6 +84,8 @@ src/
     contracts/
     query/
     album/
+  server/
+    static/
   storage/
     catalog/
     vector/
@@ -95,6 +101,10 @@ src/
 - `src/cli/`
   - owns command entrypoints, argument parsing, and output formatting
   - calls into lower layers but should not absorb media-processing rules
+
+- `src/app/`
+  - owns application-level orchestration shared by multiple surfaces
+  - keeps search workflow reusable between CLI and the local webserver
 
 - `src/config/`
   - owns project config loading, defaults, validation, and path resolution
@@ -124,6 +134,10 @@ src/
   - owns lightweight local database adapters
   - stores vectors and `localIdentifier` mappings only, or the smallest debug metadata strictly required
 
+- `src/server/`
+  - owns the thin local HTTP surface for search convenience
+  - must stay local-only and defer real work to shared app/runtime services
+
 - `src/shared/`
   - owns small cross-cutting utilities, shared types, and common helpers
   - should remain minimal so layer boundaries stay clear
@@ -135,9 +149,17 @@ src/
   - stays thin and delegates business flow to core layers
   - includes preflight native capability probes before deeper Photos extraction debugging
 
+- `src/app/search/`
+  - contains the shared search workflow that loads config, initializes repositories, runs semantic retrieval, and writes album output
+  - keeps CLI and webserver from duplicating orchestration logic
+
 - `src/cli/formatters/`
   - contains terminal output shaping for tables, debug payloads, and summaries
   - keeps presentation logic out of retriever results and indexer records
+
+- `src/server/static/`
+  - contains the plain HTML, CSS, and browser-side JS for the search-only UI
+  - must stay intentionally thin and only expose parameters already supported by runtime
 
 - `src/config/defaults/`
   - defines default runtime values and album naming defaults
@@ -207,6 +229,7 @@ src/
 - `src/retriever/query/`
   - contains query normalization, embedding lookup orchestration, and ranking handoff
   - remains independent from album mutation side effects
+  - now also supports an image-query adapter for exact-match validation by embedding a local/exported image through the same multimodal provider path
 
 - `src/retriever/album/`
   - contains `AI Search Results` album lookup and update orchestration
@@ -215,6 +238,7 @@ src/
 - `src/storage/catalog/`
   - contains lightweight asset record persistence keyed by `localIdentifier`
   - must stay minimal and avoid becoming a Photos mirror
+  - may store synthetic deterministic local identifiers for validation-only external image fixtures, but must not store export file paths
 
 - `src/storage/vector/`
   - contains vector repository interfaces and local backend adapters
@@ -244,7 +268,7 @@ src/
 1. Each of the five core concerns gets exactly one primary top-level folder.
 2. Cross-cutting code goes to `config`, `storage`, or `shared`, not into an arbitrary core layer.
 3. CLI concerns stay in `src/cli/` so the project remains CLI-first without coupling commands to indexing internals.
-4. Optional future surfaces such as HTTP or Electron should be added later as peer folders, not by reshaping the five core processing folders.
+4. Optional future surfaces such as a thin local webserver or later Electron shell should be added as peer folders, not by reshaping the five core processing folders.
 5. No layer may persist thumbnail image files or preview caches to local disk in the MVP path.
 6. `scanner` stops at asset discovery and candidate shaping; thumbnail or representation bytes begin in `extractor`.
 7. `retriever/query` handles semantic matching, while `retriever/album` handles write-back into Photos so read and write concerns stay separable.
@@ -297,7 +321,8 @@ For MVP setup, the runtime should load a single user-editable file named `media-
   },
   "retriever": {
     "default_limit": 50,
-    "album_write_mode": "replace"
+    "album_write_mode": "replace",
+    "write_to_photos_results_album": true
   },
   "embedding": {
     "provider": "open-clip",
@@ -362,6 +387,7 @@ For MVP setup, the runtime should load a single user-editable file named `media-
 6. `allow_network_access` represents whether Photos-backed iCloud fetches are allowed during extraction.
 7. `reindex_mode` starts with `incremental` as the default assumption, while exact change detection logic is defined separately.
 8. `album_write_mode` starts with `replace` so each search run can deterministically refresh the review album.
+9. `write_to_photos_results_album` defaults to `true`; set it to `false` when validating retrieval output without mutating the Photos review album or triggering extra iCloud sync.
 
 ### Config Boundary Decisions
 
@@ -719,6 +745,8 @@ Search review happens by writing matching assets into the album `AI Search Resul
 5. Based on `album_write_mode`, the bridge refreshes the album contents deterministically.
 6. The bridge resolves each `local_identifier` back to a `PHAsset` and adds the matching assets to the album.
 7. The bridge returns a normalized summary including album name, requested asset count, applied asset count, and any unresolved identifiers.
+
+If `retriever.write_to_photos_results_album` is `false`, the search workflow must still produce ranked retrieval results and debug output, but it should skip the native Photos album mutation step entirely.
 
 The current Phase 4 baseline now covers this full workflow shape: a dedicated bridge command can ensure the target album exists, resolve ordered `local_identifier` values back to `PHAsset`, and return a normalized mutation summary after album write-back.
 

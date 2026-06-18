@@ -4,7 +4,7 @@
 
 Keyword search in Apple Photos is not enough when the user wants to find images or videos by semantic meaning in natural language.
 
-The project needs a local CLI workflow that can search a Photos library semantically, even when original assets live in iCloud, without duplicating the library onto disk.
+The project needs a local CLI-first workflow that can search a Photos library semantically, even when original assets live in iCloud, without duplicating the library onto disk.
 
 ## Primary Users
 
@@ -34,7 +34,7 @@ Each result should eventually be able to return:
 
 1. The first MVP targets both images and videos stored in Apple Photos.
 2. The app must run entirely locally on a MacBook Air with Apple Silicon.
-3. The first usable retrieval surface is `CLI only`.
+3. The first usable retrieval surface is `CLI-first`, with CLI as the primary orchestration surface and an optional local web search page layered on top later.
 4. The first embedding provider is local-first on Apple Silicon; remote providers stay out of MVP.
 5. Extraction must stay in-memory and must not create preview files or media proxies on SSD.
 6. The database should store only vectors and `PHAsset.localIdentifier`, with as little extra state as possible.
@@ -46,9 +46,9 @@ Each result should eventually be able to return:
 
 ## Retrieval Surface Decision
 
-For the first MVP, retrieval will be exposed through CLI commands only.
+For the first MVP, retrieval stays CLI-first.
 
-We are explicitly not adding a local HTTP API during project setup. A local HTTP API can be reconsidered later if a concrete integration need appears for downstream agents or external tooling.
+The primary orchestration surface remains CLI commands. A thin local-only webserver may wrap the existing search workflow for convenience, but it must not replace CLI as the source of truth for automation, diagnostics, or long-running indexing flows.
 
 ## Semantic Indexing Decision
 
@@ -135,6 +135,27 @@ CLI milestone hiện tại đã nối hai nửa đó lại thành command `searc
 2. chạy semantic query trên vector backend hiện có
 3. write kết quả match trở lại album `AI Search Results`
 4. in debug output gồm query text, counts, top match, và unresolved write-back rows
+
+Để test retrieval mà không tác động liên tục tới Apple Photos hoặc iCloud sync, runtime cũng cần hỗ trợ non-mutating verification mode:
+
+1. `search <query> --skip-album` bỏ qua album write-back cho riêng lần chạy đó
+2. `retriever.write_to_photos_results_album = false` tắt mặc định việc ghi vào Photos trong suốt giai đoạn test
+3. ở cả hai mode này, CLI vẫn phải trả ranked results, top match, counts, và JSON payload đầy đủ để confirm output
+
+Runtime hiện cũng có một validation adapter hẹp cho exact-match với ảnh export/local:
+
+1. `index file <image-path>` embed và persist đúng 1 ảnh local bằng cùng provider/model đang dùng cho image indexing
+2. `search image <image-path>` embed chính ảnh đó như query vector
+3. nếu dùng cùng file cho cả hai bước thì top hit kỳ vọng phải quay lại đúng synthetic `local_identifier` của ảnh đó với score rất cao, lý tưởng gần `1.0`
+4. dùng `--skip-album` cho flow này để không cố write một asset ngoài Photos vào `AI Search Results`
+
+Repository milestone hiện tại cũng đã thêm một local webserver tối giản cho search-only workflow:
+
+1. serve một plain HTML page trên `127.0.0.1`
+2. expose `POST /api/search` cho `query` và `limit`
+3. gọi lại đúng shared search workflow đang dùng cho CLI thay vì spawn subprocess
+4. hiển thị summary/results cơ bản trong browser
+5. vẫn ghi kết quả match về album `AI Search Results` trong Photos như CLI path
 
 For MVP setup, the runtime also defines two storage-facing contracts:
 

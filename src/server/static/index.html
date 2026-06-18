@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Media Vector Index Search</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Media Vector Index</p>
+        <h1>Local Search</h1>
+        <p class="lede">
+          Run semantic search from the browser, then review the ordered results in
+          Apple Photos.
+        </p>
+      </section>
+
+      <section class="panel">
+        <form id="search-form" class="search-form">
+          <label class="field">
+            <span>Query</span>
+            <input
+              id="query-input"
+              name="query"
+              type="text"
+              placeholder="sunset beach"
+              autocomplete="off"
+              required
+            />
+          </label>
+
+          <label class="field field-small">
+            <span>Limit</span>
+            <input id="limit-input" name="limit" type="number" min="1" step="1" />
+          </label>
+
+          <button id="search-button" type="submit">Search</button>
+        </form>
+
+        <p id="status-line" class="status">Ready.</p>
+        <p class="hint">
+          Matches are written back into the <strong id="album-name"></strong> album in Photos.
+        </p>
+      </section>
+
+      <section id="error-panel" class="panel panel-error hidden"></section>
+
+      <section id="summary-panel" class="panel hidden">
+        <h2>Summary</h2>
+        <dl id="summary-grid" class="summary-grid"></dl>
+      </section>
+
+      <section id="results-panel" class="panel hidden">
+        <h2>Top Results</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Score</th>
+                <th>Asset</th>
+                <th>Representation</th>
+                <th>Local Identifier</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      window.__MVI_BOOTSTRAP__ = __MVI_BOOTSTRAP__;
+    </script>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

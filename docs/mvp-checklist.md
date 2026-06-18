@@ -11,7 +11,7 @@ Quy ước:
 ## Phase 0: Scope And Decisions
 
 - [x] Chốt phạm vi MVP và định nghĩa "done" cho bản đầu tiên
-- [x] Chốt retrieval surface đầu tiên: CLI only
+- [x] Chốt retrieval surface đầu tiên: CLI-first; CLI là orchestration surface chính, còn local web search chỉ là lớp điều khiển mỏng bọc quanh search workflow khi cần
 - [x] Chốt source library đầu tiên: Apple Photos trên macOS, đọc trực tiếp qua Photos app access path
 - [x] Chốt scope asset đầu tiên: index cả ảnh và video trong Photos
 - [x] Chốt iCloud assumption: asset gốc có thể nằm trên iCloud, không giả định filesystem local copy
@@ -101,11 +101,17 @@ Quy ước:
   - [x] Implement repository backend mới cho vector persistence và ANN/vector lookup
   - [x] Wire `index` để persist embeddings vào vector DB đã chốt thay vì chỉ JSON vector payload store
   - [x] Wire `search` để truy vấn semantic qua search engine/vector index backend thay vì cosine ranking thuần trong app layer
+  - [x] Thêm flow verify exact-match bằng 1 ảnh export local: `index file <image-path>` + `search image <image-path>`
   - [ ] Verify semantic retrieval quality và latency trên library thật sau khi chuyển backend
 - [x] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
 - [x] Implement album output flow cho `AI Search Results`
 - [x] Implement ghi asset match trở lại album trong Photos app
 - [x] Implement lệnh CLI `search "..."` với output đủ cho debug
+- [x] Thêm non-mutating search verification mode để test retrieval mà không trigger album sync liên tục
+- [x] Add local web search surface tối giản dùng chung search workflow
+  - [x] Thêm local webserver `serve` chỉ bind `127.0.0.1`
+  - [x] Thêm plain HTML search page chỉ expose `query` và `limit`
+  - [x] Reuse shared search workflow thay vì spawn CLI subprocess
 
 ## Phase 5: Validation And Docs
 
@@ -122,5 +128,6 @@ Quy ước:
 - [x] Thêm progress logging tối thiểu cho `index`/`reindex` để theo dõi batch lớn
 - [x] Thêm timing/throughput breakdown cho `index` để đo bottleneck theo stage
 - [ ] Cập nhật `README.md` với quickstart và workflow CLI
+- [x] Đồng bộ docs cho local search webserver để không lệch với runtime hiện tại
 - [x] Cập nhật `docs/product.md` theo các quyết định MVP đã chốt
 - [x] Cập nhật `docs/architecture.md` theo storage boundary, indexing boundary, retrieval contract

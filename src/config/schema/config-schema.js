@@ -61,5 +61,20 @@ export function validateConfig(config) {
     });
   }
 
+  if (
+    "write_to_photos_results_album" in (config.retriever ?? {}) &&
+    typeof config.retriever.write_to_photos_results_album !== "boolean"
+  ) {
+    throw new AppError(
+      "Config field retriever.write_to_photos_results_album must be a boolean.",
+      {
+        code: "CONFIG_FIELD_INVALID",
+        details: {
+          field: "retriever.write_to_photos_results_album",
+        },
+      }
+    );
+  }
+
   return config;
 }

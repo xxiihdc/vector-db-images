@@ -2,13 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { createCatalogRepository } from "../src/storage/catalog/catalog-repository.js";
 import { createVectorRepository } from "../src/storage/vector/vector-repository.js";
 import { buildAssetRecord } from "../src/indexer/records/asset-record.js";
 import { buildEmbeddingRecord } from "../src/indexer/records/embedding-record.js";
 import { initializeProjectScaffold } from "../src/config/load-config.js";
 import { DEFAULT_CONFIG } from "../src/config/defaults/config.js";
+import { validateConfig } from "../src/config/schema/config-schema.js";
 import {
   STORAGE_LAYOUT,
   formatStorageSummaryLines,
@@ -20,8 +22,18 @@ import { buildCapabilityLines } from "../src/embedding/providers/open-clip/remed
 import { createSearchService } from "../src/retriever/query/search-service.js";
 import { createAlbumService } from "../src/retriever/album/album-service.js";
 import { runSearchCommand } from "../src/cli/commands/search.js";
+import { runServeCommand } from "../src/cli/commands/serve.js";
 import { runIndexLikeCommand } from "../src/cli/commands/index-command-base.js";
 import { AppError } from "../src/shared/errors/app-error.js";
+import { executeSearchWorkflow } from "../src/app/search/execute-search-workflow.js";
+import { runIndexFileCommand } from "../src/cli/commands/index-file.js";
+import { indexLocalImageFile } from "../src/indexer/pipeline/index-file-pipeline.js";
+import {
+  createSearchWebServer,
+} from "../src/server/search-web-server.js";
+
+const TINY_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+yF9sAAAAASUVORK5CYII=";
 
 async function withTempDir(callback) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mvi-storage-test-"));
@@ -33,11 +45,82 @@ async function withTempDir(callback) {
   }
 }
 
+async function writeTinyPng(tempDir, fileName = "tiny.png") {
+  const filePath = path.join(tempDir, fileName);
+  await writeFile(filePath, Buffer.from(TINY_PNG_BASE64, "base64"));
+  return filePath;
+}
+
 function createJsonResponse(status, payload) {
   return {
     status,
     async json() {
       return payload;
+    },
+  };
+}
+
+function createMockRequest({ method = "GET", url = "/", body = null } = {}) {
+  const chunks =
+    body === null || body === undefined
+      ? []
+      : [Buffer.from(typeof body === "string" ? body : JSON.stringify(body))];
+  const request = Readable.from(chunks);
+  request.method = method;
+  request.url = url;
+  request.headers = {};
+  return request;
+}
+
+function createMockResponse() {
+  const state = {
+    statusCode: 200,
+    headers: {},
+    body: "",
+    headersSent: false,
+  };
+
+  let resolveResponse;
+  const completed = new Promise((resolve) => {
+    resolveResponse = resolve;
+  });
+
+  return {
+    get headersSent() {
+      return state.headersSent;
+    },
+    writeHead(statusCode, headers = {}) {
+      state.statusCode = statusCode;
+      state.headers = headers;
+      state.headersSent = true;
+    },
+    end(chunk = "") {
+      state.body += chunk;
+      resolveResponse({
+        statusCode: state.statusCode,
+        headers: state.headers,
+        body: state.body,
+      });
+    },
+    destroy(error) {
+      resolveResponse(Promise.reject(error));
+    },
+    completed,
+  };
+}
+
+async function dispatchServerRequest(server, options = {}) {
+  const request = createMockRequest(options);
+  const response = createMockResponse();
+  server.emit("request", request, response);
+  const result = await response.completed;
+
+  return {
+    status: result.statusCode,
+    headers: result.headers,
+    body: result.body,
+    json() {
+      return JSON.parse(result.body);
     },
   };
 }
@@ -403,6 +486,127 @@ test("qdrant vector repository bulk upserts multiple embeddings in one points re
   assert.equal(pointsWrites.length, 1);
   assert.equal(pointsWrites[0].body.points.length, 2);
   assert.equal(await repository.countEmbeddings(), 2);
+});
+
+test("index file command stores one local image with deterministic synthetic local identifier", async () => {
+  await withTempDir(async (tempDir) => {
+    const imagePath = await writeTinyPng(tempDir);
+    const output = await runIndexFileCommand({
+      cwd: tempDir,
+      args: [imagePath],
+      loadConfigFn: async () => ({
+        config: structuredClone(DEFAULT_CONFIG),
+        configPath: path.join(tempDir, "media-vector-index.config.json"),
+        exists: true,
+      }),
+      createStorageRepositoriesFn: () => {
+        const catalogRepository = createCatalogRepository({
+          filePath: path.join(tempDir, "catalog-store.json"),
+        });
+        const vectorRepository = createVectorRepository({
+          filePath: path.join(tempDir, "vector-store.json"),
+        });
+
+        return {
+          storageRoot: tempDir,
+          catalogDbPath: path.join(tempDir, "catalog-store.json"),
+          vectorBackend: "json-file",
+          vectorServiceUrl: null,
+          vectorCollectionName: null,
+          catalogRepository,
+          vectorRepository,
+        };
+      },
+      indexLocalImageFileFn: (options) =>
+        indexLocalImageFile({
+          ...options,
+          createEmbeddingProviderFn: () => ({
+            async embedRepresentations() {
+              return [
+                {
+                  status: "ready",
+                  vector: [1, 0, 0],
+                  embedding_provider: "open-clip",
+                  embedding_model: "ViT-B-32",
+                  model_identity: "open-clip:ViT-B-32:test",
+                },
+              ];
+            },
+          }),
+          now: () => "2026-06-18T12:00:00.000Z",
+        }),
+    });
+
+    assert.match(output.local_identifier, /^external-image:[a-f0-9]{64}$/);
+    assert.equal(output.vector_dimensions, 3);
+    assert.equal(output.lines[0], "Command: index file");
+  });
+});
+
+test("search service can retrieve the exact same local image file via image-query adapter", async () => {
+  await withTempDir(async (tempDir) => {
+    const imagePath = await writeTinyPng(tempDir);
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const indexed = await indexLocalImageFile({
+      imagePath,
+      config: structuredClone(DEFAULT_CONFIG),
+      catalogRepository,
+      vectorRepository,
+      createEmbeddingProviderFn: () => ({
+        async embedRepresentations() {
+          return [
+            {
+              status: "ready",
+              vector: [1, 0, 0],
+              embedding_provider: "open-clip",
+              embedding_model: "ViT-B-32",
+              model_identity: "open-clip:ViT-B-32:test",
+            },
+          ];
+        },
+      }),
+      now: () => "2026-06-18T12:00:00.000Z",
+    });
+
+    const searchService = createSearchService({
+      catalogRepository,
+      vectorRepository,
+      createEmbeddingProviderFn: () => ({
+        async embedImageQuery() {
+          return {
+            vector: [1, 0, 0],
+            embedding_provider: "open-clip",
+            embedding_model: "ViT-B-32",
+            model_identity: "open-clip:ViT-B-32:test",
+          };
+        },
+      }),
+    });
+    const result = await searchService.searchByImage({
+      imagePath,
+      config: structuredClone(DEFAULT_CONFIG),
+      limit: 5,
+    });
+
+    assert.equal(result.result_count, 1);
+    assert.equal(result.results[0].local_identifier, indexed.local_identifier);
+    assert.equal(result.results[0].score, 1);
+    assert.equal(
+      result.results[0].match_evidence.strategy,
+      "semantic-vector-image-query"
+    );
+  });
 });
 
 test("init scaffold writes config and catalog storage while reporting qdrant backend info", async () => {
@@ -1735,6 +1939,152 @@ test("search command orchestrates semantic retrieval and album write-back with d
   );
 });
 
+test("shared search workflow returns the same structured payload as the CLI search path", async () => {
+  const result = await executeSearchWorkflow({
+    cwd: "/tmp/mvi",
+    query: "sunset beach",
+    limit: 4,
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    createStorageRepositoriesFn: () => ({
+      storageRoot: "/tmp/mvi/.data",
+      catalogDbPath: "/tmp/mvi/.data/catalog-store.json",
+      vectorBackend: "qdrant",
+      vectorServiceUrl: "http://127.0.0.1:6333",
+      vectorCollectionName: "media-index",
+      catalogRepository: {
+        async initialize() {},
+      },
+      vectorRepository: {
+        async initialize() {},
+      },
+    }),
+    createSearchServiceFn: () => ({
+      async search() {
+        return {
+          implemented: true,
+          phase: "search-and-retrieval",
+          status: "completed",
+          query_text: "sunset beach",
+          result_count: 1,
+          searched_embedding_count: 11,
+          results: [
+            {
+              result_id: "result:1",
+              local_identifier: "IMG/001",
+              asset_type: "image",
+              representation_kind: "image-thumbnail",
+              album_name: "AI Search Results",
+              score: 0.9812,
+              rank: 1,
+            },
+          ],
+          notes: ["Semantic search ranked local image/video embeddings."],
+        };
+      },
+    }),
+    createAlbumServiceFn: () => ({
+      async writeAlbumOutput() {
+        return {
+          implemented: true,
+          phase: "search",
+          album_name: "AI Search Results",
+          album_local_identifier: "album/001",
+          album_write_mode: "replace",
+          requested_asset_count: 1,
+          applied_asset_count: 1,
+          resolved_asset_count: 1,
+          unresolved_results: [],
+          notes: ["Album write-back mutated the native Photos album."],
+        };
+      },
+    }),
+  });
+
+  assert.equal(result.command, "search");
+  assert.equal(result.query_text, "sunset beach");
+  assert.equal(result.limit, 4);
+  assert.equal(result.result_count, 1);
+  assert.equal(result.applied_asset_count, 1);
+  assert.ok(result.lines.includes("Results returned: 1"));
+});
+
+test("shared search workflow skips Photos album write-back when config disables it", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.retriever.write_to_photos_results_album = false;
+  let albumTouched = false;
+
+  const result = await executeSearchWorkflow({
+    cwd: "/tmp/mvi",
+    query: "sunset beach",
+    limit: 4,
+    loadConfigFn: async () => ({
+      config,
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    createStorageRepositoriesFn: () => ({
+      storageRoot: "/tmp/mvi/.data",
+      catalogDbPath: "/tmp/mvi/.data/catalog-store.json",
+      vectorBackend: "qdrant",
+      vectorServiceUrl: "http://127.0.0.1:6333",
+      vectorCollectionName: "media-index",
+      catalogRepository: {
+        async initialize() {},
+      },
+      vectorRepository: {
+        async initialize() {},
+      },
+    }),
+    createSearchServiceFn: () => ({
+      async search() {
+        return {
+          implemented: true,
+          phase: "search-and-retrieval",
+          status: "completed",
+          query_text: "sunset beach",
+          result_count: 1,
+          searched_embedding_count: 11,
+          results: [
+            {
+              result_id: "result:1",
+              local_identifier: "IMG/001",
+              asset_type: "image",
+              representation_kind: "image-thumbnail",
+              album_name: "AI Search Results",
+              score: 0.9812,
+              rank: 1,
+            },
+          ],
+          notes: ["Semantic search ranked local image/video embeddings."],
+        };
+      },
+    }),
+    createAlbumServiceFn: () => ({
+      async writeAlbumOutput() {
+        albumTouched = true;
+        throw new Error("should not run");
+      },
+    }),
+  });
+
+  assert.equal(albumTouched, false);
+  assert.equal(
+    result.summary,
+    "Semantic search completed without Photos album write-back."
+  );
+  assert.equal(result.album_write_mode, "skipped");
+  assert.equal(result.applied_asset_count, 0);
+  assert.ok(
+    result.notes.includes(
+      "Album write-back was disabled by config for this search run."
+    )
+  );
+});
+
 test("search command rejects an empty query before touching repositories", async () => {
   let storageTouched = false;
 
@@ -1760,6 +2110,194 @@ test("search command rejects an empty query before touching repositories", async
   );
 
   assert.equal(storageTouched, false);
+});
+
+test("config validation rejects a non-boolean retriever.write_to_photos_results_album", () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.retriever.write_to_photos_results_album = "no";
+
+  assert.throws(
+    () => validateConfig(config),
+    (error) => {
+      assert.equal(error.code, "CONFIG_FIELD_INVALID");
+      assert.equal(
+        error.details?.field,
+        "retriever.write_to_photos_results_album"
+      );
+      return true;
+    }
+  );
+});
+
+test("search webserver serves the HTML entrypoint and health payload", async () => {
+  const server = createSearchWebServer({
+    cwd: "/tmp/mvi",
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    executeSearchFn: async () => ({
+      query_text: "unused",
+    }),
+  });
+
+  const [htmlResponse, healthResponse] = await Promise.all([
+    dispatchServerRequest(server, {
+      method: "GET",
+      url: "/",
+    }),
+    dispatchServerRequest(server, {
+      method: "GET",
+      url: "/api/health",
+    }),
+  ]);
+
+  assert.equal(htmlResponse.status, 200);
+  assert.match(htmlResponse.body, /Media Vector Index/);
+
+  assert.equal(healthResponse.status, 200);
+  const healthPayload = healthResponse.json();
+  assert.equal(healthPayload.status, "ok");
+  assert.equal(healthPayload.default_limit, DEFAULT_CONFIG.retriever.default_limit);
+});
+
+test("search webserver POST /api/search returns the search payload", async () => {
+  const searchCalls = [];
+  const server = createSearchWebServer({
+    cwd: "/tmp/mvi",
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    executeSearchFn: async (payload) => {
+      searchCalls.push(payload);
+      return {
+        summary: "Semantic search completed and Photos album updated.",
+        query_text: payload.query,
+        limit: payload.limit,
+        result_count: 1,
+        searched_embedding_count: 5,
+        album_name: "AI Search Results",
+        album_write_mode: "replace",
+        requested_asset_count: 1,
+        applied_asset_count: 1,
+        unresolved_results: [],
+        results: [
+          {
+            rank: 1,
+            score: 0.92,
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            local_identifier: "IMG/001",
+          },
+        ],
+      };
+    },
+  });
+
+  const response = await dispatchServerRequest(server, {
+    method: "POST",
+    url: "/api/search",
+    body: {
+      query: "sunset beach",
+      limit: 7,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  const payload = response.json();
+  assert.equal(payload.query_text, "sunset beach");
+  assert.equal(payload.limit, 7);
+  assert.deepEqual(searchCalls, [
+    {
+      cwd: "/tmp/mvi",
+      query: "sunset beach",
+      limit: 7,
+    },
+  ]);
+});
+
+test("search webserver validates empty queries and invalid limits", async () => {
+  const server = createSearchWebServer({
+    cwd: "/tmp/mvi",
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+  });
+
+  const emptyQueryResponse = await dispatchServerRequest(server, {
+    method: "POST",
+    url: "/api/search",
+    body: {
+      query: "   ",
+    },
+  });
+  const invalidLimitResponse = await dispatchServerRequest(server, {
+    method: "POST",
+    url: "/api/search",
+    body: {
+      query: "sunset",
+      limit: 0,
+    },
+  });
+
+  assert.equal(emptyQueryResponse.status, 400);
+  assert.equal(emptyQueryResponse.json().code, "SEARCH_QUERY_REQUIRED");
+  assert.equal(invalidLimitResponse.status, 400);
+  assert.equal(invalidLimitResponse.json().code, "SEARCH_LIMIT_INVALID");
+});
+
+test("search webserver returns structured errors with diagnostic log paths", async () => {
+  const server = createSearchWebServer({
+    cwd: "/tmp/mvi",
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    executeSearchFn: async () => {
+      const error = new Error("vector backend unavailable");
+      error.code = "VECTOR_BACKEND_UNAVAILABLE";
+      throw error;
+    },
+    writeDiagnosticLogFn: async () => "/tmp/mvi/logs/web-error.json",
+  });
+
+  const response = await dispatchServerRequest(server, {
+    method: "POST",
+    url: "/api/search",
+    body: {
+      query: "sunset beach",
+    },
+  });
+
+  assert.equal(response.status, 500);
+  const payload = response.json();
+  assert.equal(payload.code, "UNHANDLED_ERROR");
+  assert.equal(payload.details.diagnostic_log_path, "/tmp/mvi/logs/web-error.json");
+});
+
+test("serve command starts the local search webserver on the requested port", async () => {
+  const result = await runServeCommand({
+    cwd: "/tmp/mvi",
+    args: ["--port", "4175"],
+    startSearchWebServerFn: async ({ host, port }) => ({
+      address: {
+        host,
+        port,
+        url: `http://${host}:${port}`,
+      },
+    }),
+  });
+
+  assert.equal(result.command, "serve");
+  assert.equal(result.port, 4175);
+  assert.ok(result.url.endsWith(":4175"));
+  assert.equal(result.host, "127.0.0.1");
 });
 
 test("embedding capability lines render concrete requirement guidance", async () => {

@@ -150,11 +150,50 @@ export function createOpenClipEmbeddingProvider({
     };
   }
 
+  async function embedImageQuery({
+    bytes_base64,
+    mime_type = null,
+  } = {}) {
+    const [embedding] = await embedRepresentations({
+      representations: [
+        {
+          local_identifier: "query-image",
+          representation_kind: "image-query",
+          asset_type: "image",
+          mime_type,
+          bytes_base64,
+        },
+      ],
+    });
+
+    if (embedding?.status !== "ready" || !Array.isArray(embedding.vector) || embedding.vector.length === 0) {
+      throw new AppError("Embedding provider returned an invalid image query vector payload.", {
+        code: "EMBEDDING_IMAGE_QUERY_INVALID_VECTOR",
+        details: {
+          provider: providerKey,
+          model: modelKey,
+          pretrained: pretrainedKey,
+          error_code: embedding?.error_code ?? null,
+          error_message: embedding?.error_message ?? null,
+        },
+      });
+    }
+
+    return {
+      vector: embedding.vector,
+      embedding_provider: embedding.embedding_provider ?? providerKey,
+      embedding_model: embedding.embedding_model ?? modelKey,
+      model_identity:
+        embedding.model_identity ?? `${providerKey}:${modelKey}:${pretrainedKey}`,
+    };
+  }
+
   return {
     providerKey,
     modelKey,
     modelIdentity: `${providerKey}:${modelKey}:${pretrainedKey}`,
     embedRepresentations,
     embedQuery,
+    embedImageQuery,
   };
 }

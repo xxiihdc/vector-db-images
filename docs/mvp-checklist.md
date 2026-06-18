@@ -93,9 +93,9 @@ Quy ước:
   - [x] Thêm preflight command và verify script tuần tự cho embedding provider setup
   - [x] Khi thiếu runtime cho embedding provider, output phải nói rõ thiếu gì, command cài thư viện nếu có, và nhắc rằng pretrained model có thể auto-download ở lần chạy đầu
 - [x] Implement vector indexing path cho ảnh và video không tạo file tạm
-- [ ] Implement local semantic search cho asset image và video
-- [ ] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
-- [ ] Implement album output flow cho `AI Search Results`
+- [x] Implement local semantic search cho asset image và video
+- [x] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
+- [x] Implement album output flow cho `AI Search Results`
 - [ ] Implement ghi asset match trở lại album trong Photos app
 - [ ] Implement lệnh CLI `search "..."` với output đủ cho debug
 

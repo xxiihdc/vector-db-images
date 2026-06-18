@@ -46,6 +46,8 @@ def load_photos_runtime() -> Tuple[dict, Optional[Dict[str, object]]]:
         import Photos  # type: ignore
         from Photos import (  # type: ignore
             PHAsset,
+            PHAssetCollection,
+            PHAssetCollectionChangeRequest,
             PHAssetResource,
             PHAssetResourceManager,
             PHAssetResourceRequestOptions,
@@ -64,6 +66,8 @@ def load_photos_runtime() -> Tuple[dict, Optional[Dict[str, object]]]:
             "objc": objc,
             "Photos": Photos,
             "PHAsset": PHAsset,
+            "PHAssetCollection": PHAssetCollection,
+            "PHAssetCollectionChangeRequest": PHAssetCollectionChangeRequest,
             "PHAssetResource": PHAssetResource,
             "PHAssetResourceManager": PHAssetResourceManager,
             "PHAssetResourceRequestOptions": PHAssetResourceRequestOptions,
@@ -178,6 +182,20 @@ def isoformat_native_date(value: object) -> Optional[str]:
         ).replace("+00:00", "Z")
 
     return str(value)
+
+
+def stringify_native_error(error: object) -> Optional[str]:
+    if error is None:
+        return None
+
+    localized_description = getattr(error, "localizedDescription", None)
+    if callable(localized_description):
+        try:
+            return str(localized_description())
+        except Exception:
+            pass
+
+    return str(error)
 
 
 def build_asset_id(local_identifier: str) -> str:
@@ -1267,6 +1285,200 @@ def request_authorization(modules: Optional[Dict[str, object]]) -> dict:
     return result
 
 
+def fetch_user_album_by_name(
+    modules: Optional[Dict[str, object]], album_name: str
+):
+    if not modules or not album_name:
+        return None
+
+    PHAssetCollection = modules["PHAssetCollection"]
+    photos_module = modules["Photos"]
+    album_type = int(getattr(photos_module, "PHAssetCollectionTypeAlbum", 1))
+    regular_subtype = int(
+        getattr(photos_module, "PHAssetCollectionSubtypeAlbumRegular", 2)
+    )
+
+    fetch_result = PHAssetCollection.fetchAssetCollectionsWithType_subtype_options_(
+        album_type, regular_subtype, None
+    )
+    for index in range(int(fetch_result.count())):
+        collection = fetch_result.objectAtIndex_(index)
+        localized_title = read_native_member(collection, "localizedTitle")
+        if str(localized_title or "") == album_name:
+            return collection
+
+    return None
+
+
+def normalize_album_summary(
+    album: object,
+    album_name: str,
+    created: bool,
+    requested_album_name: str,
+) -> dict:
+    local_identifier = read_native_member(album, "localIdentifier")
+    localized_title = read_native_member(album, "localizedTitle")
+    estimated_asset_count = read_native_key_value(album, "estimatedAssetCount")
+
+    normalized_estimated_count: Optional[int]
+    try:
+        normalized_estimated_count = (
+            None if estimated_asset_count is None else int(estimated_asset_count)
+        )
+    except Exception:
+        normalized_estimated_count = None
+
+    return {
+        "album_name": str(localized_title or album_name),
+        "requested_album_name": requested_album_name,
+        "album_local_identifier": str(local_identifier) if local_identifier else None,
+        "created": bool(created),
+        "found_existing": not bool(created),
+        "estimated_asset_count": normalized_estimated_count,
+    }
+
+
+def perform_photo_library_changes(
+    modules: Optional[Dict[str, object]], change_handler
+) -> dict:
+    if not modules:
+        return {
+            "performed": False,
+            "success": False,
+            "timeout": False,
+            "error": "Photos runtime unavailable; cannot perform album mutation.",
+        }
+
+    PHPhotoLibrary = modules["PHPhotoLibrary"]
+    photo_library = PHPhotoLibrary.sharedPhotoLibrary()
+    completion_event = threading.Event()
+    completion_state = {"success": False, "error": None}
+
+    def completion_handler(success: bool, error: object) -> None:
+        completion_state["success"] = bool(success)
+        completion_state["error"] = stringify_native_error(error)
+        completion_event.set()
+
+    try:
+        photo_library.performChanges_completionHandler_(change_handler, completion_handler)
+    except Exception as error:
+        return {
+            "performed": False,
+            "success": False,
+            "timeout": False,
+            "error": f"Photos performChanges call failed: {error}",
+        }
+
+    if not completion_event.wait(timeout=30):
+        return {
+            "performed": True,
+            "success": False,
+            "timeout": True,
+            "error": "Timed out while waiting for Photos album mutation completion.",
+        }
+
+    return {
+        "performed": True,
+        "success": bool(completion_state["success"]),
+        "timeout": False,
+        "error": completion_state["error"],
+    }
+
+
+def ensure_results_album(
+    modules: Optional[Dict[str, object]], album_name: str, permission_status: str
+) -> dict:
+    requested_name = str(album_name or "").strip()
+    if not requested_name:
+        return {
+            "implemented": False,
+            "album_name": None,
+            "requested_album_name": requested_name,
+            "album_local_identifier": None,
+            "created": False,
+            "found_existing": False,
+            "estimated_asset_count": None,
+            "errors": ["Album name is required."],
+        }
+
+    if not modules:
+        return {
+            "implemented": False,
+            "album_name": requested_name,
+            "requested_album_name": requested_name,
+            "album_local_identifier": None,
+            "created": False,
+            "found_existing": False,
+            "estimated_asset_count": None,
+            "errors": ["Photos runtime unavailable; cannot ensure album."],
+        }
+
+    if permission_status not in {"authorized", "limited"}:
+        return {
+            "implemented": False,
+            "album_name": requested_name,
+            "requested_album_name": requested_name,
+            "album_local_identifier": None,
+            "created": False,
+            "found_existing": False,
+            "estimated_asset_count": None,
+            "errors": [
+                "Photos permission must be `authorized` or `limited` before ensuring the results album."
+            ],
+        }
+
+    existing_album = fetch_user_album_by_name(modules, requested_name)
+    if existing_album is not None:
+        return {
+            "implemented": True,
+            **normalize_album_summary(
+                existing_album, requested_name, False, requested_name
+            ),
+            "errors": [],
+        }
+
+    PHAssetCollectionChangeRequest = modules["PHAssetCollectionChangeRequest"]
+
+    def change_handler() -> None:
+        PHAssetCollectionChangeRequest.creationRequestForAssetCollectionWithTitle_(
+            requested_name
+        )
+
+    mutation = perform_photo_library_changes(modules, change_handler)
+    if not mutation["success"]:
+        return {
+            "implemented": False,
+            "album_name": requested_name,
+            "requested_album_name": requested_name,
+            "album_local_identifier": None,
+            "created": False,
+            "found_existing": False,
+            "estimated_asset_count": None,
+            "errors": [mutation["error"] or "Album creation failed."],
+        }
+
+    created_album = fetch_user_album_by_name(modules, requested_name)
+    if created_album is None:
+        return {
+            "implemented": False,
+            "album_name": requested_name,
+            "requested_album_name": requested_name,
+            "album_local_identifier": None,
+            "created": False,
+            "found_existing": False,
+            "estimated_asset_count": None,
+            "errors": [
+                "Album creation completed but the album could not be found afterward."
+            ],
+        }
+
+    return {
+        "implemented": True,
+        **normalize_album_summary(created_album, requested_name, True, requested_name),
+        "errors": [],
+    }
+
+
 def handle_check_access() -> dict:
     payload = build_base_payload("check-access")
     _, modules = load_photos_runtime()
@@ -1520,6 +1732,38 @@ def handle_extract_representations(
     return payload
 
 
+def handle_ensure_results_album(album_name: str) -> dict:
+    payload = build_base_payload("ensure-results-album")
+    _, modules = load_photos_runtime()
+    permission_status, raw_status = get_authorization_status(modules)
+    library_access, asset_count_probe = probe_library_access(permission_status, modules)
+    album_state = ensure_results_album(modules, album_name, permission_status)
+
+    payload.update(
+        {
+            "phase": "search",
+            "permission_status": permission_status,
+            "permission_status_raw": raw_status,
+            "library_access": library_access,
+            "asset_count_probe": asset_count_probe,
+            "album_name": album_state["album_name"],
+            "requested_album_name": album_state["requested_album_name"],
+            "album_local_identifier": album_state["album_local_identifier"],
+            "created": album_state["created"],
+            "found_existing": album_state["found_existing"],
+            "estimated_asset_count": album_state["estimated_asset_count"],
+            "implemented": album_state["implemented"],
+            "ok": album_state["implemented"],
+            "errors": payload["errors"] + album_state["errors"],
+            "notes": payload["notes"]
+            + [
+                "Album ensure only creates or resolves the target Photos album; asset population remains a later retrieval step.",
+            ],
+        }
+    )
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1532,6 +1776,7 @@ def main() -> int:
             "capabilities",
             "probe-original-access",
             "extract-representations",
+            "ensure-results-album",
         ],
     )
     parser.add_argument("--json", action="store_true")
@@ -1552,6 +1797,7 @@ def main() -> int:
     parser.add_argument(
         "--extract-timeout-seconds", type=int, default=DEFAULT_EXTRACT_TIMEOUT_SECONDS
     )
+    parser.add_argument("--album-name", default="AI Search Results")
     args = parser.parse_args()
 
     handlers = {
@@ -1572,6 +1818,7 @@ def main() -> int:
             thumbnail_size=max(1, args.thumbnail_size),
             timeout_seconds=max(1, args.extract_timeout_seconds),
         ),
+        "ensure-results-album": lambda: handle_ensure_results_album(args.album_name),
     }
     payload = handlers[args.command]()
 

@@ -60,3 +60,11 @@ export function extractPhotosRepresentations({
     ],
   });
 }
+
+export function ensurePhotosResultsAlbum({
+  albumName = "AI Search Results",
+} = {}) {
+  return runPythonPhotosBridge(PHOTOS_COMMANDS.ENSURE_RESULTS_ALBUM, {
+    args: ["--album-name", String(albumName)],
+  });
+}

@@ -17,6 +17,8 @@ import { runInitCommand } from "../src/cli/commands/init.js";
 import { createIndexPipeline } from "../src/indexer/pipeline/index-pipeline.js";
 import { createEmbeddingProvider } from "../src/embedding/create-provider.js";
 import { buildCapabilityLines } from "../src/embedding/providers/open-clip/remediation.js";
+import { createSearchService } from "../src/retriever/query/search-service.js";
+import { createAlbumService } from "../src/retriever/album/album-service.js";
 
 async function withTempDir(callback) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mvi-storage-test-"));
@@ -445,6 +447,342 @@ test("embedding provider unavailable error includes install guidance", async () 
         error.details.requirements[0].install_command,
         "python3 -m pip install open_clip_torch"
       );
+      return true;
+    }
+  );
+});
+
+test("embedding provider factory supports text query embedding", async () => {
+  const provider = createEmbeddingProvider({
+    config: structuredClone(DEFAULT_CONFIG),
+    bridgeRunner: (command, payload) => {
+      assert.equal(command, "embed-text-query");
+      assert.equal(payload.text, "sunset beach");
+      return {
+        ok: true,
+        embedding: {
+          text: "sunset beach",
+          status: "ready",
+          vector: ["0.7", 0.2, 0.1],
+          embedding_provider: "open-clip",
+          embedding_model: "ViT-B-32",
+          model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        },
+      };
+    },
+  });
+
+  const result = await provider.embedQuery({ text: " sunset beach " });
+
+  assert.equal(result.text, "sunset beach");
+  assert.deepEqual(result.vector, [0.7, 0.2, 0.1]);
+});
+
+test("search service ranks local image and video assets by cosine similarity", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const imageAsset = await catalogRepository.upsertAsset({
+      local_identifier: "IMG/001",
+      asset_type: "image",
+      pixel_width: 3024,
+      pixel_height: 4032,
+      modification_date: "2026-06-18T10:00:00.000Z",
+      indexed_at: "2026-06-18T10:00:00.000Z",
+      last_seen_at: "2026-06-18T10:00:00.000Z",
+    });
+    const videoAsset = await catalogRepository.upsertAsset({
+      local_identifier: "VID/002",
+      asset_type: "video",
+      pixel_width: 1920,
+      pixel_height: 1080,
+      duration_seconds: 8.4,
+      modification_date: "2026-06-18T11:00:00.000Z",
+      indexed_at: "2026-06-18T11:00:00.000Z",
+      last_seen_at: "2026-06-18T11:00:00.000Z",
+    });
+
+    await vectorRepository.saveEmbedding({
+      record: buildEmbeddingRecord({
+        asset_id: imageAsset.asset_id,
+        local_identifier: imageAsset.local_identifier,
+        representation_kind: "image-thumbnail",
+        embedding_provider: "open-clip",
+        embedding_model: "ViT-B-32",
+        model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        source_fingerprint: imageAsset.source_fingerprint,
+        indexed_at: "2026-06-18T10:00:00.000Z",
+        extraction_signature: "image-thumbnail:224",
+      }),
+      vector: [0.98, 0.02, 0],
+    });
+    await vectorRepository.saveEmbedding({
+      record: buildEmbeddingRecord({
+        asset_id: videoAsset.asset_id,
+        local_identifier: videoAsset.local_identifier,
+        representation_kind: "video-poster-frame",
+        embedding_provider: "open-clip",
+        embedding_model: "ViT-B-32",
+        model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        source_fingerprint: videoAsset.source_fingerprint,
+        indexed_at: "2026-06-18T11:00:00.000Z",
+        extraction_signature: "video-poster-frame:224",
+      }),
+      vector: [0.7, 0.7, 0],
+    });
+
+    const searchService = createSearchService({
+      catalogRepository,
+      vectorRepository,
+      createEmbeddingProviderFn: () => ({
+        modelIdentity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+        async embedQuery({ text }) {
+          assert.equal(text, "sunset beach");
+          return {
+            text,
+            vector: [1, 0, 0],
+            embedding_provider: "open-clip",
+            embedding_model: "ViT-B-32",
+            model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+          };
+        },
+      }),
+    });
+
+    const result = await searchService.search({
+      query: "  sunset beach  ",
+      config: structuredClone(DEFAULT_CONFIG),
+      limit: 5,
+    });
+
+    assert.equal(result.result_count, 2);
+    assert.equal(result.searched_embedding_count, 2);
+    assert.equal(result.results[0].local_identifier, "IMG/001");
+    assert.equal(result.results[0].asset_type, "image");
+    assert.equal(result.results[0].representation_kind, "image-thumbnail");
+    assert.equal(result.results[0].rank, 1);
+    assert.equal(result.results[0].album_name, "AI Search Results");
+    assert.equal(result.results[1].local_identifier, "VID/002");
+    assert.equal(result.results[1].asset_type, "video");
+    assert.equal(result.results[1].representation_kind, "video-poster-frame");
+    assert.match(result.results[0].result_id, /^result:[a-f0-9]{64}$/);
+    assert.equal(result.results[0].match_evidence.query_text, "sunset beach");
+    assert.equal(result.results[0].match_evidence.strategy, "semantic-vector");
+  });
+});
+
+test("search service rejects empty queries", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const searchService = createSearchService({
+      catalogRepository,
+      vectorRepository,
+      createEmbeddingProviderFn: () => ({
+        async embedQuery() {
+          throw new Error("should not run");
+        },
+      }),
+    });
+
+    await assert.rejects(
+      () =>
+        searchService.search({
+          query: "   ",
+          config: structuredClone(DEFAULT_CONFIG),
+        }),
+      (error) => {
+        assert.equal(error.code, "SEARCH_QUERY_REQUIRED");
+        return true;
+      }
+    );
+  });
+});
+
+test("album service ensures results album using configured album name", async () => {
+  const albumService = createAlbumService({
+    ensureResultsAlbumFn: ({ albumName }) => ({
+      implemented: true,
+      phase: "search",
+      album_name: albumName,
+      requested_album_name: albumName,
+      album_local_identifier: "album/001",
+      created: false,
+      found_existing: true,
+      estimated_asset_count: 0,
+      errors: [],
+    }),
+  });
+
+  const result = await albumService.ensureResultsAlbum({
+    config: structuredClone(DEFAULT_CONFIG),
+  });
+
+  assert.equal(result.implemented, true);
+  assert.equal(result.album_name, "AI Search Results");
+  assert.equal(result.found_existing, true);
+  assert.equal(result.created, false);
+});
+
+test("album service uses custom configured album name", async () => {
+  const albumService = createAlbumService({
+    ensureResultsAlbumFn: ({ albumName }) => ({
+      implemented: true,
+      phase: "search",
+      album_name: albumName,
+      requested_album_name: albumName,
+      album_local_identifier: "album/custom",
+      created: true,
+      found_existing: false,
+      estimated_asset_count: 0,
+      errors: [],
+    }),
+  });
+
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.app.results_album_name = "My AI Album";
+
+  const result = await albumService.ensureResultsAlbum({ config });
+
+  assert.equal(result.album_name, "My AI Album");
+  assert.equal(result.requested_album_name, "My AI Album");
+  assert.equal(result.created, true);
+});
+
+test("album output flow preserves order, deduplicates local identifiers, and tracks unresolved results", async () => {
+  const albumService = createAlbumService({
+    ensureResultsAlbumFn: ({ albumName }) => ({
+      implemented: true,
+      phase: "search",
+      album_name: albumName,
+      requested_album_name: albumName,
+      album_local_identifier: "album/output",
+      created: false,
+      found_existing: true,
+      estimated_asset_count: 0,
+      errors: [],
+    }),
+  });
+
+  const result = await albumService.buildAlbumOutput({
+    config: structuredClone(DEFAULT_CONFIG),
+    results: [
+      {
+        result_id: "result:1",
+        local_identifier: "IMG/001",
+        album_name: "AI Search Results",
+      },
+      {
+        result_id: "result:2",
+        local_identifier: "VID/002",
+        album_name: "AI Search Results",
+      },
+      {
+        result_id: "result:3",
+        local_identifier: "IMG/001",
+        album_name: "AI Search Results",
+      },
+      {
+        result_id: "result:4",
+        local_identifier: null,
+        album_name: "AI Search Results",
+      },
+    ],
+  });
+
+  assert.equal(result.album_name, "AI Search Results");
+  assert.equal(result.album_write_mode, "replace");
+  assert.equal(result.requested_asset_count, 2);
+  assert.deepEqual(result.requested_local_identifiers, ["IMG/001", "VID/002"]);
+  assert.equal(result.results_received_count, 4);
+  assert.deepEqual(result.unresolved_results, [
+    {
+      result_id: "result:4",
+      local_identifier: null,
+      reason: "missing-local-identifier",
+    },
+  ]);
+});
+
+test("album output flow falls back to configured album name when results omit one", async () => {
+  const albumService = createAlbumService({
+    ensureResultsAlbumFn: ({ albumName }) => ({
+      implemented: true,
+      phase: "search",
+      album_name: albumName,
+      requested_album_name: albumName,
+      album_local_identifier: "album/fallback",
+      created: true,
+      found_existing: false,
+      estimated_asset_count: 0,
+      errors: [],
+    }),
+  });
+
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.app.results_album_name = "Configured Album";
+
+  const result = await albumService.buildAlbumOutput({
+    config,
+    results: [
+      {
+        result_id: "result:1",
+        local_identifier: "IMG/100",
+      },
+    ],
+  });
+
+  assert.equal(result.album_name, "Configured Album");
+  assert.equal(result.requested_local_identifiers[0], "IMG/100");
+  assert.equal(result.created, true);
+});
+
+test("album output flow rejects mixed album targets", async () => {
+  const albumService = createAlbumService({
+    ensureResultsAlbumFn: () => {
+      throw new Error("should not run");
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      albumService.buildAlbumOutput({
+        config: structuredClone(DEFAULT_CONFIG),
+        results: [
+          {
+            result_id: "result:1",
+            local_identifier: "IMG/001",
+            album_name: "Album A",
+          },
+          {
+            result_id: "result:2",
+            local_identifier: "VID/002",
+            album_name: "Album B",
+          },
+        ],
+      }),
+    (error) => {
+      assert.equal(error.code, "ALBUM_OUTPUT_MIXED_ALBUM_NAMES");
       return true;
     }
   );

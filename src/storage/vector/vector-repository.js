@@ -123,6 +123,11 @@ export function createVectorRepository({ filePath }) {
     return store.embeddings.filter((embedding) => embedding.asset_id === assetId);
   }
 
+  async function listEmbeddings() {
+    const store = await loadStore(filePath);
+    return store.embeddings;
+  }
+
   async function getVector(vectorRef) {
     const store = await loadStore(filePath);
     return store.vectors.find((vector) => vector.vector_ref === vectorRef) ?? null;
@@ -259,15 +264,78 @@ export function createVectorRepository({ filePath }) {
     return candidates[0] ?? null;
   }
 
+  async function listActiveEmbeddings({
+    embedding_model,
+    representation_kinds = [],
+  } = {}) {
+    const store = await loadStore(filePath);
+    const vectorRefs = new Set(store.vectors.map((vector) => vector.vector_ref));
+    const groupedCandidates = new Map();
+
+    for (const embedding of store.embeddings) {
+      if (embedding_model && embedding.embedding_model !== embedding_model) {
+        continue;
+      }
+
+      if (
+        representation_kinds.length > 0 &&
+        !representation_kinds.includes(embedding.representation_kind)
+      ) {
+        continue;
+      }
+
+      if (!embedding.vector_ref || !vectorRefs.has(embedding.vector_ref)) {
+        continue;
+      }
+
+      if (!(embedding.status === "ready" || embedding.status === "stale")) {
+        continue;
+      }
+
+      const groupKey = [
+        embedding.asset_id,
+        embedding.representation_kind,
+        embedding.embedding_model,
+      ].join("::");
+      const current = groupedCandidates.get(groupKey);
+
+      if (!current) {
+        groupedCandidates.set(groupKey, embedding);
+        continue;
+      }
+
+      const statusDelta =
+        getStatusPriority(embedding.status) - getStatusPriority(current.status);
+
+      if (statusDelta > 0) {
+        groupedCandidates.set(groupKey, embedding);
+        continue;
+      }
+
+      if (
+        statusDelta === 0 &&
+        String(embedding.indexed_at ?? "").localeCompare(String(current.indexed_at ?? "")) > 0
+      ) {
+        groupedCandidates.set(groupKey, embedding);
+      }
+    }
+
+    return Array.from(groupedCandidates.values()).sort((left, right) =>
+      String(right.indexed_at ?? "").localeCompare(String(left.indexed_at ?? ""))
+    );
+  }
+
   return {
     initialize,
     countEmbeddings,
     getEmbeddingById,
+    listEmbeddings,
     listEmbeddingsForAsset,
     getVector,
     putVector,
     saveEmbedding,
     markEmbeddingStatus,
     getActiveEmbedding,
+    listActiveEmbeddings,
   };
 }

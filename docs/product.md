@@ -102,6 +102,22 @@ Each retrieval result returned to an AI agent should include:
 6. optional debug metadata
 7. `match_evidence` summarizing why this result matched
 
+Ở milestone hiện tại của Phase 4, local semantic search core đã chạy được trên local vector store cho cả ảnh và video bằng cách:
+
+1. normalize text query ở Node runtime
+2. embed query bằng cùng provider/model identity dùng lúc indexing
+3. rank image thumbnail và video poster frame embeddings bằng local similarity scoring
+4. trả về retrieval result đủ `local_identifier` để nối tiếp sang album write-back ở bước sau
+
+Ở cùng giai đoạn này, runtime cũng đã có path riêng để tạo hoặc tìm lại album `AI Search Results` trong Apple Photos trước khi bước ghi asset matches được nối vào.
+
+Album output flow hiện cũng đã có Node-side orchestration đủ để:
+
+1. nhận retrieval results
+2. ensure target album đã tồn tại
+3. chuẩn hóa ordered unique `local_identifier` list cho write-back
+4. giữ lại unresolved result rows để bước native album mutation xử lý tiếp
+
 For MVP setup, the runtime also defines two storage-facing contracts:
 
 1. an `asset record` keyed by deterministic `asset_id` plus `PHAsset.localIdentifier`

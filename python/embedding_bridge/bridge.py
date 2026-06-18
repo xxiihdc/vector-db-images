@@ -150,6 +150,29 @@ def build_failed_embedding(
     }
 
 
+def build_text_embedding_result(
+    *,
+    text: str,
+    provider: str,
+    model: str,
+    pretrained: str,
+    vector: Optional[List[float]],
+    status: str,
+    error_code: Optional[str] = None,
+    error_message: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "text": text,
+        "status": status,
+        "embedding_provider": provider,
+        "embedding_model": model,
+        "model_identity": f"{provider}:{model}:{pretrained}",
+        "vector": vector,
+        "error_code": error_code,
+        "error_message": error_message,
+    }
+
+
 def embed_image_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     provider = str(payload.get("provider") or "open-clip")
     model = str(payload.get("model") or "ViT-B-32")
@@ -265,6 +288,99 @@ def embed_image_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def embed_text_query(payload: Dict[str, Any]) -> Dict[str, Any]:
+    provider = str(payload.get("provider") or "open-clip")
+    model = str(payload.get("model") or "ViT-B-32")
+    pretrained = str(payload.get("pretrained") or "laion2b_s34b_b79k")
+    device = str(payload.get("device") or "auto")
+    normalize = bool(payload.get("normalize", True))
+    query_text = str(payload.get("text") or "").strip()
+    result = build_base_payload("embed-text-query", provider, model, pretrained)
+    runtime = load_runtime()
+    result["errors"].extend(runtime["errors"])
+    result["requirements"] = build_runtime_requirements(runtime)
+    result["capabilities"] = {
+        "torch_available": runtime["torch_available"],
+        "open_clip_available": runtime["open_clip_available"],
+        "pillow_available": runtime["pillow_available"],
+        "runtime_device": select_runtime_device(runtime, device),
+        "downloads_model_on_first_run": True,
+    }
+
+    if result["requirements"]:
+        return result
+
+    if not query_text:
+        result["errors"].append("Query text is required for text embedding.")
+        result["embedding"] = build_text_embedding_result(
+            text=query_text,
+            provider=provider,
+            model=model,
+            pretrained=pretrained,
+            vector=None,
+            status="failed",
+            error_code="QUERY_TEXT_REQUIRED",
+            error_message="Query text is required for text embedding.",
+        )
+        return result
+
+    torch = runtime["torch"]
+    open_clip = runtime["open_clip"]
+    runtime_device = result["capabilities"]["runtime_device"]
+
+    try:
+        model_instance, _, _ = open_clip.create_model_and_transforms(
+            model, pretrained=pretrained, device=runtime_device
+        )
+        tokenizer = open_clip.get_tokenizer(model)
+        model_instance.eval()
+    except Exception as error:
+        result["errors"].append(f"OpenCLIP model load failed: {error}")
+        result["requirements"].append(
+            {
+                "kind": "network-or-cache",
+                "name": "pretrained model download",
+                "status": "missing",
+                "install_command": None,
+                "message": "Ensure the machine has internet access on first run so OpenCLIP can download pretrained weights, or warm the cache ahead of time.",
+            }
+        )
+        return result
+
+    try:
+        text_tokens = tokenizer([query_text]).to(runtime_device)
+        with torch.no_grad():
+            text_features = model_instance.encode_text(text_tokens)
+            if normalize:
+                text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        vector = text_features[0].detach().cpu().tolist()
+        result["embedding"] = build_text_embedding_result(
+            text=query_text,
+            provider=provider,
+            model=model,
+            pretrained=pretrained,
+            vector=vector,
+            status="ready",
+        )
+        result["notes"].append("Embedded the normalized text query in-memory without writing temp files.")
+        result["ok"] = True
+        return result
+    except Exception as error:
+        result["embedding"] = build_text_embedding_result(
+            text=query_text,
+            provider=provider,
+            model=model,
+            pretrained=pretrained,
+            vector=None,
+            status="failed",
+            error_code="OPEN_CLIP_TEXT_EMBED_FAILED",
+            error_message=str(error),
+        )
+        result["errors"].append(f"OpenCLIP text embedding failed: {error}")
+        return result
+
+
 def handle_capabilities(payload: Dict[str, Any]) -> Dict[str, Any]:
     provider = str(payload.get("provider") or "open-clip")
     model = str(payload.get("model") or "ViT-B-32")
@@ -288,7 +404,7 @@ def handle_capabilities(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["capabilities", "embed-image-batch"])
+    parser.add_argument("command", choices=["capabilities", "embed-image-batch", "embed-text-query"])
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     payload = read_stdin_payload()
@@ -296,6 +412,7 @@ def main() -> int:
     handlers = {
         "capabilities": handle_capabilities,
         "embed-image-batch": embed_image_batch,
+        "embed-text-query": embed_text_query,
     }
     result = handlers[args.command](payload)
     print(json.dumps(result, indent=2))

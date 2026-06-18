@@ -543,6 +543,8 @@ For the current end of Phase 3, the runtime now includes:
 
 Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors, including batched image-thumbnail and video-poster-frame indexing without temporary files, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
 
+The current Phase 4 read path now also includes local semantic search over the JSON-backed vector store: Node normalizes the query text, asks the embedding provider for a text vector under the same model identity used during indexing, then ranks active image/video embeddings locally before handing results to later album-write steps.
+
 For the first provider implementation, the execution mode is local-first on Apple Silicon hardware. The provider interface should remain portable so a remote embedding service can be added later without changing indexing or retrieval contracts.
 
 ## Deterministic Identity Baseline
@@ -706,6 +708,10 @@ Search review happens by writing matching assets into the album `AI Search Resul
 5. Based on `album_write_mode`, the bridge refreshes the album contents deterministically.
 6. The bridge resolves each `local_identifier` back to a `PHAsset` and adds the matching assets to the album.
 7. The bridge returns a normalized summary including album name, requested asset count, applied asset count, and any unresolved identifiers.
+
+The current Phase 4 baseline now covers the first half of this workflow: a dedicated bridge command can ensure the target album exists and return a normalized album summary before any asset identifiers are written into it.
+
+The Node-side album output flow now also prepares the second-half input contract before mutation: it consumes retrieval results directly, preserves rank order while deduplicating `local_identifier` values, carries the configured `album_write_mode`, and surfaces unresolved rows that still need write-back handling.
 
 ### Album Write-Back Rules
 

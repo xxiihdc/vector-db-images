@@ -88,10 +88,73 @@ export function createOpenClipEmbeddingProvider({
     });
   }
 
+  async function embedQuery({ text } = {}) {
+    const normalizedText = String(text ?? "").trim();
+    const payload = bridgeRunner("embed-text-query", {
+      provider: providerKey,
+      model: modelKey,
+      pretrained: pretrainedKey,
+      device,
+      normalize: normalizeEmbeddings,
+      text: normalizedText,
+    });
+
+    if (!payload?.ok) {
+      if (payload?.embedding?.error_code === "QUERY_TEXT_REQUIRED") {
+        throw new AppError("Query text is required for semantic search.", {
+          code: "EMBEDDING_QUERY_REQUIRED",
+          details: {
+            provider: providerKey,
+            model: modelKey,
+            pretrained: pretrainedKey,
+          },
+        });
+      }
+
+      throw new AppError("OpenCLIP provider is unavailable for text queries.", {
+        code: "EMBEDDING_QUERY_PROVIDER_UNAVAILABLE",
+        details: {
+          provider: providerKey,
+          model: modelKey,
+          pretrained: pretrainedKey,
+          device,
+          errors: payload?.errors ?? [],
+          notes: payload?.notes ?? [],
+          requirements: normalizeCapabilityRequirements(payload),
+        },
+      });
+    }
+
+    const vector = normalizeVector(payload?.embedding?.vector);
+
+    if (payload?.embedding?.status !== "ready" || !vector) {
+      throw new AppError("Embedding provider returned an invalid query vector payload.", {
+        code: "EMBEDDING_QUERY_INVALID_VECTOR",
+        details: {
+          provider: providerKey,
+          model: modelKey,
+          pretrained: pretrainedKey,
+          error_code: payload?.embedding?.error_code ?? null,
+          error_message: payload?.embedding?.error_message ?? null,
+        },
+      });
+    }
+
+    return {
+      text: normalizedText,
+      vector,
+      embedding_provider: payload.embedding.embedding_provider ?? providerKey,
+      embedding_model: payload.embedding.embedding_model ?? modelKey,
+      model_identity:
+        payload.embedding.model_identity ?? `${providerKey}:${modelKey}:${pretrainedKey}`,
+    };
+  }
+
   return {
     providerKey,
     modelKey,
     modelIdentity: `${providerKey}:${modelKey}:${pretrainedKey}`,
     embedRepresentations,
+    embedQuery,
   };
 }

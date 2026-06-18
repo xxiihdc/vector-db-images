@@ -19,6 +19,7 @@
     "docs:check": "npm run config:check-sample && node --eval \"console.log('Project đang ở giai đoạn setup. Xem AGENTS.md và docs/.')\"",
     "index": "node ./src/cli/main.js index",
     "reindex": "node ./src/cli/main.js reindex",
+    "search": "node ./src/cli/main.js search",
     "photos:check": "node ./src/cli/main.js photos check",
     "photos:request-access": "node ./src/cli/main.js photos request-access",
     "photos:debug": "node ./src/cli/main.js photos debug",

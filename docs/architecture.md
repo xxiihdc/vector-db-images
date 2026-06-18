@@ -545,6 +545,8 @@ Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. 
 
 The current Phase 4 read path now also includes local semantic search over the JSON-backed vector store: Node normalizes the query text, asks the embedding provider for a text vector under the same model identity used during indexing, then ranks active image/video embeddings locally before handing results to later album-write steps.
 
+The current CLI milestone wraps that retrieval path in a dedicated `search` command: the command loads config plus local stores, runs semantic ranking, then immediately hands the ranked results to the album write-back flow so search review remains native to Photos.
+
 For the first provider implementation, the execution mode is local-first on Apple Silicon hardware. The provider interface should remain portable so a remote embedding service can be added later without changing indexing or retrieval contracts.
 
 ## Deterministic Identity Baseline

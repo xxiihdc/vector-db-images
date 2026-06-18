@@ -14,6 +14,7 @@ import { runPhotosCapabilitiesCommand } from "./commands/photos-capabilities.js"
 import { runEmbeddingCapabilitiesCommand } from "./commands/embedding-capabilities.js";
 import { runIndexCommand } from "./commands/index.js";
 import { runReindexCommand } from "./commands/reindex.js";
+import { runSearchCommand } from "./commands/search.js";
 import {
   AppError,
   toDiagnosticErrorPayload,
@@ -39,6 +40,10 @@ async function dispatch(argv) {
 
   if (command === "reindex") {
     return runReindexCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
+  }
+
+  if (command === "search") {
+    return runSearchCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
   }
 
   if (command === "photos" && subcommand === "check") {

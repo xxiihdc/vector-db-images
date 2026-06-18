@@ -19,6 +19,7 @@ import { createEmbeddingProvider } from "../src/embedding/create-provider.js";
 import { buildCapabilityLines } from "../src/embedding/providers/open-clip/remediation.js";
 import { createSearchService } from "../src/retriever/query/search-service.js";
 import { createAlbumService } from "../src/retriever/album/album-service.js";
+import { runSearchCommand } from "../src/cli/commands/search.js";
 
 async function withTempDir(callback) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mvi-storage-test-"));
@@ -877,6 +878,136 @@ test("album output write-back sends ordered local identifiers to the bridge and 
   assert.ok(
     result.notes.includes("Album write-back mutated the native Photos album.")
   );
+});
+
+test("search command orchestrates semantic retrieval and album write-back with debug output", async () => {
+  const searchCalls = [];
+  const albumCalls = [];
+
+  const result = await runSearchCommand({
+    cwd: "/tmp/mvi",
+    args: ["sunset", "beach", "--limit", "3"],
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    createStorageRepositoriesFn: () => ({
+      storageRoot: "/tmp/mvi/.data",
+      catalogDbPath: "/tmp/mvi/.data/catalog-store.json",
+      vectorDbPath: "/tmp/mvi/.data/vector-store.json",
+      catalogRepository: {
+        async initialize() {},
+      },
+      vectorRepository: {
+        async initialize() {},
+      },
+    }),
+    createSearchServiceFn: () => ({
+      async search(payload) {
+        searchCalls.push(payload);
+        return {
+          implemented: true,
+          phase: "search-and-retrieval",
+          status: "completed",
+          query_text: "sunset beach",
+          result_count: 1,
+          searched_embedding_count: 9,
+          results: [
+            {
+              result_id: "result:1",
+              local_identifier: "IMG/001",
+              asset_type: "image",
+              representation_kind: "image-thumbnail",
+              album_name: "AI Search Results",
+              score: 0.9987,
+              rank: 1,
+            },
+          ],
+          notes: ["Semantic search ranked local image/video embeddings."],
+        };
+      },
+    }),
+    createAlbumServiceFn: () => ({
+      async writeAlbumOutput(payload) {
+        albumCalls.push(payload);
+        return {
+          implemented: true,
+          phase: "search",
+          album_name: "AI Search Results",
+          album_local_identifier: "album/001",
+          album_write_mode: "replace",
+          requested_asset_count: 1,
+          applied_asset_count: 1,
+          resolved_asset_count: 1,
+          unresolved_results: [],
+          notes: ["Album write-back mutated the native Photos album."],
+        };
+      },
+    }),
+  });
+
+  assert.deepEqual(searchCalls, [
+    {
+      query: "sunset beach",
+      config: structuredClone(DEFAULT_CONFIG),
+      limit: 3,
+    },
+  ]);
+  assert.deepEqual(albumCalls, [
+    {
+      results: [
+        {
+          result_id: "result:1",
+          local_identifier: "IMG/001",
+          asset_type: "image",
+          representation_kind: "image-thumbnail",
+          album_name: "AI Search Results",
+          score: 0.9987,
+          rank: 1,
+        },
+      ],
+      config: structuredClone(DEFAULT_CONFIG),
+    },
+  ]);
+  assert.equal(result.summary, "Semantic search completed and Photos album updated.");
+  assert.equal(result.query_text, "sunset beach");
+  assert.equal(result.result_count, 1);
+  assert.equal(result.applied_asset_count, 1);
+  assert.ok(result.lines.includes("Query: sunset beach"));
+  assert.ok(result.lines.includes("Applied asset writes: 1"));
+  assert.ok(
+    result.lines.some((line) =>
+      line.includes("Top match #1: score=0.9987 asset=image representation=image-thumbnail localIdentifier=IMG/001")
+    )
+  );
+});
+
+test("search command rejects an empty query before touching repositories", async () => {
+  let storageTouched = false;
+
+  await assert.rejects(
+    () =>
+      runSearchCommand({
+        cwd: "/tmp/mvi",
+        args: ["--limit", "5"],
+        loadConfigFn: async () => ({
+          config: structuredClone(DEFAULT_CONFIG),
+          configPath: "/tmp/mvi/media-vector-index.config.json",
+          exists: true,
+        }),
+        createStorageRepositoriesFn: () => {
+          storageTouched = true;
+          throw new Error("should not run");
+        },
+      }),
+    (error) => {
+      assert.equal(error.code, "SEARCH_QUERY_REQUIRED");
+      return true;
+    }
+  );
+
+  assert.equal(storageTouched, false);
 });
 
 test("embedding capability lines render concrete requirement guidance", async () => {

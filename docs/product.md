@@ -119,6 +119,13 @@ Album output flow hiện cũng đã có Node-side orchestration đủ để:
 4. gọi native Photos album mutation qua Python bridge để resolve `PHAsset` và update album theo `album_write_mode`
 5. giữ lại unresolved result rows để CLI/debug path báo rõ asset nào không resolve được
 
+CLI milestone hiện tại đã nối hai nửa đó lại thành command `search <query>`:
+
+1. nhận natural-language query từ Terminal
+2. chạy local semantic ranking trên vector store hiện có
+3. write kết quả match trở lại album `AI Search Results`
+4. in debug output gồm query text, counts, top match, và unresolved write-back rows
+
 For MVP setup, the runtime also defines two storage-facing contracts:
 
 1. an `asset record` keyed by deterministic `asset_id` plus `PHAsset.localIdentifier`

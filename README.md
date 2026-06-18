@@ -1,80 +1,139 @@
 # Media Vector Index
 
-Project scaffold local-first cho semantic search ảnh và video trong Apple Photos bằng CLI, tối ưu cho MacBook Air dùng Apple Silicon.
+CLI local-first để index và tìm kiếm ảnh/video trong Apple Photos bằng ngôn ngữ tự nhiên trên macOS Apple Silicon.
 
-## Trạng thái
+## Hiện trạng
 
-Đã hoàn tất `Phase 0: Scope And Decisions`, `Phase 1: Core Design`, `Phase 2: Scaffold`, và toàn bộ `Phase 3: Ingestion` hiện tại gồm connect path vào Photos framework, Photos permission flow, asset enumeration, iCloud-backed original access path, in-memory thumbnail/video representation extraction, repository interface cho local catalog cùng vector layer, index pipeline tối thiểu, và re-index command chạy lặp lại không tạo duplicate theo [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md).
+Repo hiện đã ở mức MVP dùng được:
 
-## Mục tiêu
+- đọc trực tiếp Apple Photos qua Photos framework
+- xin quyền Photos của macOS qua native flow
+- index ảnh và video theo `PHAsset.localIdentifier`
+- tạo embedding local-first
+- search semantic qua vector backend local
+- đẩy kết quả vào album `AI Search Results`
 
-Project này được định hướng trở thành một công cụ CLI-first có khả năng:
+## Yêu cầu
 
-1. xin quyền truy cập Photos của macOS và đọc thư viện Apple Photos
-2. đọc trực tiếp asset từ app Photos trên macOS, kể cả khi media gốc đang nằm trên iCloud
-3. lấy thumbnail hoặc representation cỡ nhỏ trực tiếp vào RAM, không ghi file tạm ra SSD
-4. biến thumbnail hoặc video representation thành vector bằng mô hình multimodal local trên Apple Silicon
-5. chỉ lưu database nhẹ gồm vector và `PHAsset.localIdentifier`
-6. cho phép tìm kiếm ảnh và video bằng câu lệnh tự nhiên trên Terminal
-7. đẩy kết quả vào album `AI Search Results` trong app Photos để xem bằng giao diện native
-8. bọc search core bằng một local webserver rất mỏng khi cần thao tác nhanh qua browser, nhưng vẫn giữ CLI là orchestration surface chính
+- macOS
+- Apple Silicon là target chính
+- Node.js `>= 22`
+- Python 3 có thể cài `PyObjC`
+- Apple Photos có library hợp lệ
+- `Qdrant` chạy local tại `127.0.0.1:6333`
 
-## Vì Sao CLI-First
+## Cài đặt
 
-Rủi ro chính không nằm ở UI. Rủi ro chính nằm ở integration và data flow:
+### 1. Cài Python dependencies
 
-- xin quyền Photos của macOS có hoạt động ổn định không
-- Photos access path có làm việc đúng khi asset gốc đang ở iCloud không
-- thumbnail hoặc representation có đi thẳng vào RAM mà không phát sinh file tạm không
-- `PHAsset.localIdentifier` có đủ ổn định cho re-index không
-- kết quả có quay lại Photos app mượt mà qua album native không
+```bash
+python3 -m pip install -r python/requirements.txt
+```
 
-Vì vậy, deliverable đầu tiên nên là một indexing và search core ổn định bám sát Photos app, thay vì mở rộng sớm sang UI riêng hoặc media pipeline quá rộng.
+### 2. Chạy Qdrant local
 
-## Scope Guardrails
+```bash
+docker run -p 6333:6333 -v "$(pwd)/.data/qdrant:/qdrant/storage" qdrant/qdrant
+```
 
-- Đọc thẳng qua Apple Photos trên macOS; không dựa vào filesystem mirror của thư viện.
-- Asset gốc có thể đang nằm trên iCloud; hệ thống phải thiết kế theo giả định đó.
-- Bản đầu index cả ảnh và video trong Photos.
-- Không làm transcript pipeline hoặc UI review riêng ở MVP này.
-- Không tạo desktop UI riêng; Photos app là nơi hiển thị kết quả.
-- Không lưu thumbnail, preview, video proxy, hay file media nháp ra ổ đĩa.
-- Chỉ lưu dữ liệu tối thiểu cần cho semantic search: vector + `localIdentifier`.
-
-## Tài Liệu Dự Kiến
-
-- [AGENTS.md](/Users/hoaiduc/Documents/VectorDB Image/AGENTS.md)
-- [docs/product.md](/Users/hoaiduc/Documents/VectorDB Image/docs/product.md)
-- [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md)
-- [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md)
-
-## Agent Workflow
-
-Repo hiện có skill nội bộ [specialist-agent-flow](/Users/hoaiduc/Documents/VectorDB Image/.agents/skills/specialist-agent-flow/SKILL.md) để route task qua các vai trò `triage-agent`, `planner-agent`, `implementer-agent`, và `verifier-agent`.
-
-Skill này ưu tiên flow `assess -> plan if needed -> implement -> test/visualize summary`, và dùng câu `Chưa có gì để visualize.` khi task không tạo ra artifact có thể preview.
-
-Sau mỗi task hoàn tất, agent cũng phải tự làm một retrospective ngắn: xem có bước nào chậm, thủ công, hoặc dễ tối ưu hơn không; nếu có, phải hỏi lại Đức ngay trong phần kết để đề xuất tối ưu workflow tiếp theo.
-
-## Bước Tiếp Theo
-
-Tiếp tục `Phase 5: Validation And Docs`: ưu tiên verify end-to-end flow `connect Photos -> xin quyền -> index -> search -> album output` trên máy thật.
-
-## Scaffold CLI
-
-Scaffold phase 2 hiện đã có CLI chạy được với command surface ban đầu:
+### 3. Khởi tạo config và storage
 
 ```bash
 node ./src/cli/main.js init
-node ./src/cli/main.js index --progress-every 10 --profile
-node ./src/cli/main.js index --no-cache --progress-every 10 --profile
-node ./src/cli/main.js index file /absolute/path/to/exported-image.jpg
-node ./src/cli/main.js reindex --progress-every 10 --profile
-node ./src/cli/main.js search "sunset beach"
-node ./src/cli/main.js search "sunset beach" --skip-album
-node ./src/cli/main.js search image /absolute/path/to/exported-image.jpg --skip-album
-node ./src/cli/main.js serve --port 4173
+```
+
+### 4. Kiểm tra vector backend
+
+```bash
 node ./src/cli/main.js storage vector-check
+```
+
+## Quickstart
+
+### Xin quyền Photos
+
+```bash
+node ./src/cli/main.js photos check
+node ./src/cli/main.js photos request-access
+```
+
+Nếu muốn probe runtime native trước:
+
+```bash
+node ./src/cli/main.js photos capabilities
+```
+
+### Index library
+
+Index mặc định ưu tiên cache nếu local catalog/vector đã có sẵn:
+
+```bash
+node ./src/cli/main.js index --progress-every 10 --profile
+```
+
+Ép refresh từ Photos:
+
+```bash
+node ./src/cli/main.js index --no-cache --limit 1000 --progress-every 10 --profile
+```
+
+Refresh trực tiếp bằng command riêng:
+
+```bash
+node ./src/cli/main.js reindex --limit 1000 --progress-every 10 --profile
+```
+
+Ghi chú:
+
+- `index --no-cache` và `reindex` đều đi theo refresh path.
+- `reindex` không cần thêm `--no-cache`.
+- `reindex --limit N` chỉ refresh phạm vi đó, không xóa asset ngoài phạm vi refresh.
+
+### Search bằng text
+
+```bash
+node ./src/cli/main.js search "sunset beach"
+```
+
+Chỉ test retrieval, không ghi album:
+
+```bash
+node ./src/cli/main.js search "sunset beach" --skip-album
+```
+
+### Search bằng ảnh query
+
+```bash
+node ./src/cli/main.js index file /absolute/path/to/exported-image.jpg
+node ./src/cli/main.js search image /absolute/path/to/exported-image.jpg --skip-album
+```
+
+### Mở local web search
+
+```bash
+node ./src/cli/main.js serve --port 4173
+```
+
+Sau đó mở `http://127.0.0.1:4173`.
+
+## Command reference
+
+### Core commands
+
+```bash
+node ./src/cli/main.js init [--force]
+node ./src/cli/main.js index [--limit 200] [--timeout-seconds 30] [--progress-every 10] [--profile] [--no-cache]
+node ./src/cli/main.js reindex [--limit 200] [--timeout-seconds 30] [--progress-every 10] [--profile]
+node ./src/cli/main.js search "<query>" [--limit 50] [--skip-album]
+node ./src/cli/main.js search image /absolute/path/to/image.jpg [--limit 50] [--skip-album]
+node ./src/cli/main.js index file /absolute/path/to/image.jpg
+node ./src/cli/main.js serve [--port 4173]
+node ./src/cli/main.js storage vector-check
+```
+
+### Photos diagnostics
+
+```bash
 node ./src/cli/main.js photos check
 node ./src/cli/main.js photos request-access
 node ./src/cli/main.js photos scan
@@ -82,67 +141,45 @@ node ./src/cli/main.js photos debug
 node ./src/cli/main.js photos capabilities
 node ./src/cli/main.js photos probe-originals
 node ./src/cli/main.js photos extract
+```
+
+### Embedding diagnostics
+
+```bash
 node ./src/cli/main.js embedding capabilities
 ```
 
-Ghi chú:
+## Cách dùng theo workflow
 
-- `init` tạo `media-vector-index.config.json`, bootstrap catalog store local trong `.data/`, và report trạng thái reachability của `Qdrant`
-- `photos check` và `photos debug` hiện chạy native runtime probe qua Python bridge để kiểm tra `PyObjC`, `Photos.framework`, và trạng thái quyền hiện tại
-- `photos request-access` chủ động gọi native Photos authorization request để kích hoạt popup TCC khi trạng thái đang là `not_determined`
-- `photos scan` hiện enumerate asset thật từ Photos framework sau khi quyền đã được cấp và trả về normalized asset candidates
-- `photos capabilities` là preflight probe để kiểm tra nhanh native bridge đang có `Photos`, `AppKit`, `Quartz`, `AVFoundation`, cùng trạng thái permission/library access trước khi debug extraction
-- `embedding capabilities` là preflight probe cho `open-clip`; khi thiếu runtime, output sẽ nói rõ thiếu thư viện nào và đưa luôn command cài nếu đó là Python library
-- `photos probe-originals` dùng Photos-managed resource request với `networkAccessAllowed` để thử chạm asset gốc cho cả asset local và iCloud-backed mà không export file ra workspace
-- `photos extract` lấy batch 10 asset gần nhất theo mặc định, tạo thumbnail ảnh `224x224` và video storyboard nhiều frame hoàn toàn in-memory để verify extractor path mà không cần chạy full scan output
-- `photos extract` và `index --no-cache` giờ stream progress trực tiếp từ Python Photos bridge qua `stderr` với prefix `[photos-bridge:extract-representations]`, nên nếu extraction chậm hoặc kẹt ở một asset cụ thể thì terminal sẽ hiện asset đang xử lý thay vì đứng im như hộp đen
-- `index` mặc định ưu tiên dùng cache từ local catalog/vector state nếu đã có dữ liệu, để tránh rescan Photos lặp lại; thêm `--no-cache` khi cần ép refresh cache từ Photos
-- `index file <image-path>` là flow validation hẹp để index đúng 1 ảnh export/local bằng cùng embedding provider hiện tại; asset test này dùng synthetic `local_identifier` deterministic theo content hash của file
-- khi `index --no-cache` chạy refresh thật, flow nối scan + extraction + normalize + persist vào local catalog + `Qdrant`, rồi gọi embedding provider abstraction để batch semantic vector cho cả image thumbnail và video storyboard hoàn toàn in-memory
-- full-library extraction trong `index` hiện tự chia thành nhiều bridge batch nhỏ để tránh lỗi `PYTHON_BRIDGE_OUTPUT_TOO_LARGE` khi tổng JSON payload thumbnail/video quá lớn
-- mỗi extraction batch giờ được `prepare -> embed -> persist` ngay, nên nếu một batch sau lỗi thì các batch trước vẫn đã được checkpoint vào local catalog và `Qdrant`
-- persist vào `Qdrant` giờ dùng bulk upsert theo chunk thay vì từng embedding một, nên full-library run giảm đáng kể số HTTP round-trip tới vector backend
-- khi `Qdrant` đóng socket hoặc chập chờn trong lúc bulk persist, pipeline sẽ retry ngắn cho từng sub-batch thay vì fail ngay ở lỗi transport đầu tiên
-- `index` và `reindex` giờ in progress log theo stage; có thể chỉnh nhịp bằng `--progress-every <n>` để log sau mỗi `n` embeddings persist thành công
-- thêm `--profile` để in timing breakdown, throughput, slowest stage, và skip breakdown phục vụ benchmark
-- local semantic search core hiện normalize query, embed text query bằng cùng model identity, rồi query semantic trực tiếp qua `Qdrant` thay vì cosine ranking thuần trong app layer
-- runtime hiện đã có album service và Python bridge command để tạo hoặc tìm lại album `AI Search Results`, rồi resolve ordered `local_identifier` list thành native `PHAsset` write-back ngay trong Photos bridge
-- album output flow hiện normalize retrieval results thành ordered unique `local_identifier` write-set, giữ `album_write_mode`, gọi native album mutation qua stdin payload, và trả về `applied_asset_count` cùng `unresolved_results` cho debug
-- `search "..."` giờ đã nối local semantic retrieval với album write-back: command sẽ load local catalog + vector backend config, query semantic matches từ `Qdrant`, update album `AI Search Results`, và in ra debug lines gồm query, counts, top match, cùng unresolved write-back rows nếu có
-- khi chỉ muốn confirm output lúc test mà không đụng Apple Photos, có thể dùng `search "..." --skip-album`; nếu muốn tắt mặc định trong cả giai đoạn test thì set `retriever.write_to_photos_results_album = false` trong `media-vector-index.config.json`
-- `search image <image-path>` reuse cùng model đang index để embed trực tiếp ảnh query rồi search theo vector; thêm `--skip-album` khi test exact-match với ảnh export/local không phải `PHAsset.localIdentifier` thật trong Photos
-- `serve` mở local webserver tại `127.0.0.1` với một plain HTML search page rất mỏng; UI hiện chỉ expose `query` và `limit`, gọi chung search workflow với CLI thay vì spawn subprocess
-- `storage vector-check` là preflight command để tách lỗi reachability của `Qdrant` khỏi lỗi embedding/search logic
-
-### Local Web Search
-
-Khi không muốn gõ lệnh search lặp lại trong Terminal, có thể mở local web UI:
+### Workflow 1: máy mới, chưa cấp quyền
 
 ```bash
-node ./src/cli/main.js serve --port 4173
-```
-
-Sau đó mở `http://127.0.0.1:4173` trong browser.
-
-Ghi chú:
-
-- UI hiện chỉ có một action `Search`
-- tham số đầu tiên đang support là `query` và `limit`
-- nếu request lỗi, page sẽ hiện error code, message, và `diagnostic_log_path` nếu có
-- kết quả vẫn được ghi về album `AI Search Results` trong Apple Photos; web page không thay thế Photos app làm review surface
-
-### Qdrant local sidecar
-
-Semantic retrieval MVP hiện mặc định dùng `Qdrant` local tại `http://127.0.0.1:6333`.
-
-Docker quickstart:
-
-```bash
-docker run -p 6333:6333 -v "$(pwd)/.data/qdrant:/qdrant/storage" qdrant/qdrant
+node ./src/cli/main.js init
 node ./src/cli/main.js storage vector-check
+node ./src/cli/main.js photos capabilities
+node ./src/cli/main.js photos request-access
+node ./src/cli/main.js photos scan
+node ./src/cli/main.js index --no-cache --limit 200 --profile
+node ./src/cli/main.js search "dog on the beach"
 ```
 
-Benchmark workflow gợi ý:
+### Workflow 2: reindex định kỳ
+
+```bash
+node ./src/cli/main.js reindex --limit 1000 --progress-every 25 --profile
+```
+
+Hợp khi muốn refresh nhóm asset mới nhất mà không đụng phần còn lại.
+
+### Workflow 3: debug extraction native
+
+```bash
+node ./src/cli/main.js photos capabilities
+node ./src/cli/main.js photos probe-originals
+node ./src/cli/main.js photos extract --json
+```
+
+### Workflow 4: benchmark search/index
 
 ```bash
 node ./src/cli/main.js storage vector-check
@@ -151,21 +188,33 @@ node ./src/cli/main.js index --limit 300 --no-cache --profile
 node ./src/cli/main.js index --limit 1000 --no-cache --profile
 ```
 
-Ghi chú:
+## Config
 
-- flow hiện tại là `batch-per-stage`, chưa phải streaming pipeline
-- timing breakdown chủ yếu giúp xác định bước tối ưu tiếp theo như extractor concurrency, true embedding batching, hoặc bulk Qdrant upsert
-- `reindex` là command riêng cho forced refresh; nó luôn bypass cache và chạy lại refresh path nhưng vẫn giữ deterministic upsert để rerun không tạo duplicate asset hay embedding row
-- khi CLI gặp lỗi, diagnostic log JSON sẽ được ghi vào `logs/` để giữ lại stacktrace và context điều tra
-- provider mặc định hiện là `open-clip`; model pretrained sẽ được OpenCLIP tự download ở lần chạy đầu tiên nếu máy có internet và local cache chưa có
+File config mặc định là:
 
-## Workflow Scripts
+```text
+media-vector-index.config.json
+```
 
-Khi đổi `DEFAULT_CONFIG`, storage path, hoặc config sample, dùng các script chuẩn sau thay vì sync tay:
+Những field đáng chú ý:
+
+- `app.results_album_name`: tên album output trong Photos
+- `storage.vector_service_url`: URL của `Qdrant`
+- `extractor.image_thumbnail_size`: kích thước thumbnail ảnh
+- `extractor.video_strategy`: hiện hỗ trợ `storyboard` hoặc `poster-frame`
+- `retriever.write_to_photos_results_album`: cho phép tắt ghi album khi test
+- `embedding.provider`, `embedding.model`, `embedding.pretrained`: model setup hiện tại
+
+Sau khi đổi `DEFAULT_CONFIG`, không sửa sample config bằng tay. Dùng:
 
 ```bash
 npm run config:sync-sample
 npm run config:check-sample
+```
+
+## Test và verify
+
+```bash
 npm run test:storage
 npm run verify:storage
 npm run verify:index-cache
@@ -174,104 +223,53 @@ npm run verify:search-core
 npm run verify:image-search -- /absolute/path/to/exported-image.jpg
 ```
 
-Ghi chú:
+## Hành vi runtime quan trọng
 
-- `config:sync-sample` rewrite `media-vector-index.config.json` từ `DEFAULT_CONFIG`
-- `config:check-sample` fail nếu sample config trong repo lệch khỏi `DEFAULT_CONFIG`
-- `test:storage` hiện đã bao gồm check sync config sample trước khi chạy test storage
-- `verify:storage` chạy full flow nhẹ cho storage gồm check sample config, test storage, rồi `init --force`
-- `verify:index-cache` chạy test storage trước, rồi verify ngắn cả hai path `index`: cache hit mặc định và forced refresh với `--no-cache`
-- `verify:embedding` chạy tuần tự `config:check-sample` rồi probe `embedding capabilities` để tránh false negative do chạy song song
-- `verify:search-core` chạy `config:check-sample` rồi chỉ execute subset test cho text-query embedding và local semantic search image/video, để verify Phase 4 nhanh hơn mà không phải chạy cả suite storage
-- `verify:image-search -- /path/to/image` chạy exact-match validation flow: index 1 ảnh local rồi search lại bằng chính ảnh đó, fail nếu top hit không đúng synthetic `local_identifier` hoặc score thấp hơn `0.999`
+- Apple Photos là source of truth; không dùng filesystem mirror.
+- Asset có thể nằm trên iCloud.
+- Pipeline chuẩn không lưu thumbnail/video proxy ra SSD.
+- `index` mặc định dùng cache nếu có.
+- `reindex` mặc định luôn refresh.
+- Video hiện mặc định dùng representation `storyboard`; runtime vẫn tương thích với dữ liệu `video-poster-frame` cũ.
+- Search có thể ghi kết quả vào album `AI Search Results`; dùng `--skip-album` khi chỉ muốn verify retrieval.
 
-## Python Bridge Runtime
+## Troubleshooting
 
-Bridge Python hiện cần `PyObjC` để kết nối `Photos.framework`:
+### `Photos permission must be authorized or limited`
+
+Chạy:
 
 ```bash
-python3 -m pip install -r python/requirements.txt
+node ./src/cli/main.js photos request-access
 ```
 
-Ghi chú hiệu năng:
+### `Qdrant` không reachable
 
-- image extraction ưu tiên path `Quartz/ImageIO` để downsample thumbnail trong RAM
-- `AppKit` vẫn được giữ làm fallback compatibility path nếu interpreter thiếu `Quartz`
+Chạy lại sidecar rồi verify:
 
-Nếu muốn dùng một interpreter khác với `python3` mặc định của hệ thống, có thể override bằng biến môi trường:
+```bash
+node ./src/cli/main.js storage vector-check
+```
+
+### Thiếu runtime embedding
+
+Chạy:
+
+```bash
+node ./src/cli/main.js embedding capabilities
+```
+
+Command này sẽ chỉ ra thư viện Python còn thiếu và command cài tương ứng.
+
+### Muốn dùng Python interpreter khác
 
 ```bash
 MVI_PYTHON_BIN=/path/to/python3 node ./src/cli/main.js photos debug
 ```
 
-## Folder Layout Đã Chốt
+## Tài liệu liên quan
 
-Folder layout baseline cho runtime đã được chốt ở mức thiết kế:
-
-```text
-src/
-  cli/
-  config/
-  scanner/
-  extractor/
-  enrichment/
-  indexer/
-  retriever/
-  storage/
-  shared/
-```
-
-Layout nội bộ cho các layer cũng đã được chốt để bước scaffold sau không phải đoán lại boundary:
-
-```text
-src/
-  scanner/{contracts,photos,services}
-  extractor/{contracts,image,video}
-  enrichment/{contracts,metadata,normalizers}
-  indexer/{contracts,pipeline,records}
-  retriever/{contracts,query,album}
-```
-
-Chi tiết trách nhiệm từng folder được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
-
-## Config File Đã Chốt
-
-Runtime config đầu tiên được chốt theo hướng một file local duy nhất:
-
-- tên file: `media-vector-index.config.json`
-- vị trí mặc định: thư mục làm việc của CLI
-- mục tiêu: cấu hình album output, local storage paths, scan/extract/index/retrieve defaults, và embedding provider selection
-- mặc định Phase 4 hiện chốt `embedding.provider = "open-clip"` với `embedding.model = "ViT-B-32"` và `embedding.pretrained = "laion2b_s34b_b79k"`
-- mặc định `extractor.video_strategy = "storyboard"` để video không còn bị nén semantics vào đúng 1 poster frame; runtime vẫn fallback search/cache được với embeddings `video-poster-frame` cũ
-
-Config sample và field rules được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
-
-## Schema Đã Chốt
-
-Ba contract nền cho bước scaffold tiếp theo đã được chốt:
-
-- `asset record`: catalog nhẹ cho từng `PHAsset.localIdentifier`
-- `embedding record`: catalog cho từng representation đã embed
-- `retrieval result`: output contract cho CLI và agent workflow
-
-Chi tiết schema v1, field rules, và boundary được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
-
-## Photos Bridge Đã Chốt
-
-Runtime integration với Apple Photos được chốt theo hướng:
-
-- `Node.js CLI` cho orchestration
-- `Python photos-bridge` cho native Photos access
-- `PyObjC` làm bridge vào Photos framework của macOS
-
-Các decision liên quan tới deterministic identity, direct Photos connection, in-memory extraction, iCloud-backed access, và album write-back được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
-
-## Re-Index Safety Đã Chốt
-
-Chiến lược re-index đầu tiên đã được chốt theo hướng an toàn cho iCloud-backed assets:
-
-- cùng `PHAsset.localIdentifier` thì giữ nguyên identity
-- detect thay đổi bằng fingerprint từ metadata nhẹ + extraction settings + model identity
-- nếu refresh mới lỗi tạm thời, giữ embedding cũ ở trạng thái searchable và đánh dấu `stale`
-
-Chi tiết rule được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
+- [AGENTS.md](/Users/hoaiduc/Documents/VectorDB Image/AGENTS.md)
+- [docs/product.md](/Users/hoaiduc/Documents/VectorDB Image/docs/product.md)
+- [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md)
+- [docs/mvp-checklist.md](/Users/hoaiduc/Documents/VectorDB Image/docs/mvp-checklist.md)

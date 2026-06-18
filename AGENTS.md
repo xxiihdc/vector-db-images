@@ -16,36 +16,32 @@ Media Vector Index
   - có step nào chưa ổn hoặc còn thủ công quá không
   - có step nào tốn thời gian bất thường không
   - có step nào có thể tối ưu bằng hook, checklist, script, hay đổi flow không
-- Nếu có ít nhất một điểm đáng tối ưu, phải hỏi lại Đức ngay trong output cuối bằng một đề xuất ngắn, cụ thể. Không chỉ ghi nhận nội bộ rồi bỏ qua.
+- Nếu phát hiện ít nhất 1 điểm tối ưu có thể sửa ngay trong task hiện tại và ảnh hưởng đến latency, độ tin cậy, hoặc DX, hãy hỏi Đức ngay trong output cuối bằng 1 câu đề xuất cụ thể.
 
 ## Mục tiêu
 
-Xây dựng một công cụ dòng lệnh (CLI) chạy hoàn toàn local trên MacBook Air dùng Apple Silicon để tìm kiếm ảnh và video trong ứng dụng Apple Photos bằng ngôn ngữ tự nhiên.
+Xây dựng và duy trì một công cụ CLI chạy hoàn toàn local trên MacBook Air dùng Apple Silicon để tìm kiếm ảnh và video trong Apple Photos bằng ngôn ngữ tự nhiên.
 
-Mục tiêu cốt lõi của bản đầu:
+Baseline hiện tại đã được Đức đánh giá là đã đạt mức MVP dùng được.
 
-1. đọc thư viện Photos qua API hệ thống và kích hoạt được quyền truy cập Photos của macOS
-2. đọc trực tiếp thư viện Apple Photos trên macOS qua Photos framework, kể cả khi ảnh hoặc video gốc đang nằm trên iCloud
-3. lấy thumbnail hoặc representation kích thước nhỏ trực tiếp vào RAM cùng với `PHAsset.localIdentifier`
-4. tạo vector từ thumbnail hoặc video representation bằng mô hình multimodal local tối ưu cho Apple Silicon
-5. chỉ lưu database rất nhẹ gồm vector và `localIdentifier`
-6. đẩy kết quả tìm kiếm vào album `AI Search Results` trong app Photos để người dùng xem bằng giao diện native
+## Trạng thái hiện tại
 
-## Giai đoạn hiện tại
-
-Ưu tiên trạng thái và phase theo `docs/mvp-checklist.md`.
-
-Hiện tại đã hoàn tất `Phase 0: Scope And Decisions` và `Phase 1: Core Design`.
-
-`Phase 2: Scaffold` đã hoàn tất.
-
-Pha đang chuẩn bị bắt đầu là `Phase 3: Ingestion`.
+- MVP checklist trong `docs/mvp-checklist.md` được xem là đã hoàn thành và không còn là nguồn điều phối công việc hằng ngày.
+- Từ thời điểm này, không bắt buộc phải tiếp tục cập nhật checklist đó sau mỗi task mới.
+- Khi cần lập kế hoạch cho việc tiếp theo, ưu tiên dựa trên:
+  - yêu cầu mới từ Đức
+  - trạng thái runtime thực tế của repo
+  - các vấn đề vận hành, chất lượng search, hiệu năng, độ ổn định, và DX
+- `README.md` là tài liệu vận hành hiện tại cho command, cách chạy, và cách dùng.
+- Các quyết định/phase/history đã chốt trước đây trong `README.md` được xem là ngữ cảnh legacy; nếu vẫn cần giữ lịch sử quyết định để agent hiểu ngữ cảnh, đặt nội dung đó vào `docs/architecture.md` thay vì tiếp tục mở rộng `README.md`.
 
 ## Nguyên tắc làm việc
 
+**Khi hai nguyên tắc xung khắc**: Giữ nguyên tắc CLI-first và local-first; chỉ phá vỡ chúng khi Đức xác nhận hoặc khi task hiện tại yêu cầu rõ ràng.
+
 1. Ưu tiên kiến trúc CLI-first.
-2. Không tạo UI riêng; dùng chính app Photos làm giao diện hiển thị kết quả.
-3. Giữ storage layer đầu tiên ở mức local, rất nhẹ, và không lưu file ảnh nháp ra SSD.
+2. Không tạo UI riêng để review media; dùng chính app Photos làm giao diện hiển thị kết quả mặc định.
+3. Giữ storage layer nhẹ, local-first, và không lưu file ảnh/video nháp ra SSD trong workflow chuẩn.
 4. Tách rõ các concern sau:
    - Photos library access
    - thumbnail và video representation extraction in-memory
@@ -58,109 +54,94 @@ Pha đang chuẩn bị bắt đầu là `Phase 3: Ingestion`.
    - zero-storage thumbnail và representation processing
    - native Photos review workflow
 6. Khi cân bằng trade-off implementation, ưu tiên hiệu năng trước rồi mới tới tính tương thích môi trường.
-7. Nếu thêm thư viện hoặc framework ngoài giúp cải thiện hiệu năng rõ rệt cho workload local-first trên macOS, ưu tiên sử dụng và cập nhật setup/docs tương ứng.
+7. Nếu thêm thư viện hoặc framework ngoài giúp cải thiện throughput hoặc latency ít nhất 20% trên workload local-first trên macOS so với dữ liệu thực tế trên máy Đức, ưu tiên sử dụng và cập nhật setup/docs tương ứng.
 
-## Non-Goals cho bản build đầu tiên
+## Non-Goals
 
 1. cloud deployment
 2. multi-user auth
-3. desktop UI riêng, Electron, hoặc local HTTP API
+3. desktop UI riêng để duyệt media
 4. training custom models
-5. transcript pipeline, desktop review UI riêng, hoặc mirror/export toàn bộ library từ iCloud về local disk
+5. transcript pipeline hoặc mirror/export toàn bộ library từ iCloud về local disk
 6. production-scale distributed vector infrastructure
 
-## Định hướng kỹ thuật ban đầu
+**Khi người dùng yêu cầu mục nằm trong Non-Goals**: Trả lời rằng đây là ngoài phạm vi của repo hiện tại, giải thích ngắn gọn tại sao, và đề xuất một thay thế nằm trong phạm vi CLI/local-Photos.
 
-### Candidate runtime
+## Tài liệu cần giữ cập nhật
 
-- Primary: Node.js CLI
-- Optional về sau: chỉ cân nhắc thêm integration khác khi workflow với Photos app đã không đủ
-
-### Retrieval surface đầu tiên
-
-- Chốt dùng `CLI only` cho MVP đầu tiên.
-- Chưa thêm local HTTP API ở giai đoạn project setup.
-- Output review flow mặc định phải đi qua album trong app Photos, không qua UI riêng.
-
-### Candidate storage
-
-- metadata catalog: SQLite hoặc file DB local rất nhẹ
-- vector layer: bắt đầu local, abstract phía sau một repository interface
-- không lưu preview artifacts, thumbnail cache, hoặc video proxy cache ra ổ đĩa trong MVP
-
-### Candidate indexing model
-
-- image unit: một asset Photos cho mỗi `PHAsset.localIdentifier`
-- video unit: một asset Photos cho mỗi `PHAsset.localIdentifier`, với representation phục vụ semantic retrieval được trích trực tiếp từ Photos access path
-- indexing input ban đầu là thumbnail hoặc representation cỡ nhỏ được nạp trực tiếp vào RAM
-- source of truth cho media gốc và hiển thị kết quả là app Photos, không phải filesystem mirror
-
-### Workflow mục tiêu cho MVP
-
-1. `index`: người dùng chạy lệnh CLI để quét thư viện Photos và cập nhật vector DB cho cả ảnh lẫn video
-2. `search`: người dùng gõ truy vấn ngôn ngữ tự nhiên trên Terminal
-3. `output`: hệ thống tạo hoặc cập nhật album `AI Search Results` trong app Photos bằng chính các asset gốc hoặc asset tham chiếu từ iCloud-backed library
-
-## Tài liệu bắt buộc
-
-Trước khi implement, luôn giữ các file sau được cập nhật:
-
+- `AGENTS.md`
 - `README.md`
 - `docs/product.md`
 - `docs/architecture.md`
-- `docs/mvp-checklist.md`
+
+`docs/mvp-checklist.md` vẫn có thể giữ như hồ sơ lịch sử MVP, nhưng không còn là tài liệu bắt buộc phải đồng bộ theo từng task mới.
 
 ## Script workflow bắt buộc cho config/storage
 
-Khi thay đổi `DEFAULT_CONFIG`, storage layout, hoặc sample config:
-
-- dùng `npm run config:sync-sample` để rewrite `media-vector-index.config.json` từ source config hiện tại
-- dùng `npm run config:check-sample` để verify sample config không bị lệch
-- dùng `npm run test:storage` để chạy storage tests; script này đã bao gồm `config:check-sample`
-- dùng `npm run verify:storage` nếu cần smoke test nhanh flow storage end-to-end gồm check sample config, storage tests, và `init --force`
+Nếu task thay đổi `DEFAULT_CONFIG`, storage layout, hoặc sample config:
+1. Chạy `npm run config:sync-sample`, `npm run config:check-sample`, và `npm run test:storage` trước khi kết thúc task.
+2. Nếu `npm run verify:storage` là cần thiết, chạy nó sau đó.
 
 Agent không nên sửa tay `media-vector-index.config.json` nếu thay đổi đó thực chất xuất phát từ `DEFAULT_CONFIG`; ưu tiên update source config rồi gọi script sync tương ứng.
 
-## Checklist vận hành
+## Legacy context từ README cũ
 
-- File checklist chính cho MVP là `docs/mvp-checklist.md`.
-- `docs/mvp-checklist.md` là nguồn công việc và phase duy nhất cho MVP; không duy trì thêm backlog song song.
-- Mỗi khi hoàn thành một task, phải cập nhật checklist này ngay trong cùng lần làm việc.
-- Nếu một task được break nhỏ hơn để dễ triển khai, thêm sub-task hoặc tách lại wording trong checklist trước khi tiếp tục.
-- Không coi task là xong nếu code đã đổi nhưng checklist chưa được cập nhật.
-- Repo có local Spec Kit hook `speckit.checklist.remind` để nhắc cập nhật checklist sau các `after_*` workflow outputs.
-- Hook này chỉ bao phủ các command trong workflow Spec Kit; với các output ngoài workflow đó, agent vẫn phải tự tuân thủ quy ước cập nhật checklist.
-- Sau khi checklist đã được cập nhật hoặc xác nhận là không cần đổi, agent phải làm thêm một bước retrospective workflow ngắn trước khi kết thúc task:
-  - xác định một điểm nghẽn, bước lặp, hoặc thao tác tay dễ tối ưu nhất nếu có
-  - nêu đề xuất tối ưu ngắn gọn cho Đức
-  - hỏi Đức có muốn mình tối ưu workflow đó ngay không
+Các điểm dưới đây đã từng được ghi khá dài trong `README.md`; từ nay xem chúng là ngữ cảnh legacy/decision history cho agent:
 
-## Thứ tự thực hiện chuẩn
+### Runtime direction đã chốt
 
-Thứ tự thực hiện chuẩn bám theo `docs/mvp-checklist.md`:
+- Primary runtime: `Node.js CLI`
+- Native bridge: `Python photos-bridge -> PyObjC -> Photos framework`
+- Retrieval surface chính: CLI
+- Local web search chỉ là convenience layer mỏng, không phải source of truth
 
-1. `Phase 0: Scope And Decisions`
-2. `Phase 1: Core Design`
-3. `Phase 2: Scaffold`
-4. `Phase 3: Ingestion`
-5. `Phase 4: Search And Retrieval`
-6. `Phase 5: Validation And Docs`
+### Source of truth và storage
 
-Khi cần diễn giải chi tiết hơn, ưu tiên dùng đúng task wording trong checklist thay vì tự đặt phase mới.
+- Apple Photos trên macOS là source of truth cho media
+- Asset gốc có thể nằm trên iCloud
+- Chỉ lưu local DB nhẹ gồm vector, `localIdentifier`, và metadata tối thiểu cần cho indexing/search/debug
+- Không lưu thumbnail cache, preview artifacts, video proxy cache, hay filesystem mirror
+
+### Retrieval workflow
+
+1. `index`: quét Photos và cập nhật vector DB
+2. `search`: nhận query ngôn ngữ tự nhiên hoặc ảnh query
+3. `output`: tạo/cập nhật album `AI Search Results` trong Photos
+
+### Search/index implementation đã chốt
+
+- Image representation baseline: `image-thumbnail`
+- Video representation baseline hiện tại: `video-storyboard`
+- Legacy video representation vẫn cần tương thích: `video-poster-frame`
+- `index` mặc định ưu tiên cache; `--no-cache` ép refresh
+- `reindex` mặc định luôn bypass cache
+- `reindex --limit N` chỉ refresh phạm vi đó, không xóa asset ngoài phạm vi
+
+### Runtime/verification notes đã chốt
+
+- Không coi agent bắt buộc phải tự chạy test native thành công trong sandbox khi task phụ thuộc TCC, Photos framework, hoặc iCloud-backed assets
+- Nếu TCC, Photos framework, hoặc iCloud access bị chặn, hãy dừng ở mức báo cáo blocker, mô tả rõ giới hạn verify, hỏi Đức xem có nên tiếp tục với code-only validation hay defer native verification, và không tuyên bố task đã được verify thành công.
+- Nếu Đức đã xác nhận một command native chạy đúng trên máy thật, coi đó là nguồn verify chính cho behavior native
+- Với search quality hoặc latency, verify trên library thật quan trọng hơn test sandbox thuần
 
 ## Ghi chú cho các agent sau này
 
-Đừng nhảy thẳng vào Electron hay HTTP API.
+Đừng nhảy thẳng vào Electron hay HTTP API nặng nếu chưa có nhu cầu rõ ràng vượt quá Photos app.
 
-Nếu chưa có nhu cầu rõ ràng vượt quá Photos app, hãy ưu tiên effort cho TCC permissions, iCloud-backed Photos access, in-memory thumbnail or representation pipeline, `localIdentifier` stability, và album output workflow trước.
+Nếu cần chọn ưu tiên kỹ thuật tiếp theo, hãy ưu tiên:
 
-Với các command có gọi qua macOS native API như Photos framework, TCC, hoặc các runtime bridge phụ thuộc quyền hệ thống của máy người dùng:
+- TCC permissions
+- iCloud-backed Photos access
+- in-memory thumbnail/video representation pipeline
+- `localIdentifier` stability
+- search quality
+- indexing throughput
+- album output workflow
 
-- không coi agent bắt buộc phải tự chạy test thành công từ môi trường sandbox/tool
-- ưu tiên review code path, validate phần không phụ thuộc quyền hệ thống, và hướng dẫn Đức chạy trực tiếp trên máy nếu cần xác nhận native behavior
-- nếu output local của Đức đã xác nhận command hoạt động đúng, coi đó là nguồn verify chính thay cho việc agent cố lặp lại cùng command trong môi trường khác
+Repo hiện có skill nội bộ `specialist-agent-flow`, nhưng chỉ dùng khi task thực sự cần route qua vai trò chuyên biệt; không bắt buộc cho mọi task.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+shell commands, and other important information, read `docs/product.md`, `docs/architecture.md`, and `README.md`.
+If a separate plan file exists in the workspace, use it explicitly. If no plan file exists, state that no plan file is available.
 <!-- SPECKIT END -->

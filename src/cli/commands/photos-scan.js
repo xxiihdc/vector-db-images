@@ -3,7 +3,7 @@ import { scanLibrary } from "../../scanner/services/scan-service.js";
 
 export async function runPhotosScanCommand({ cwd }) {
   const configState = await loadConfig(cwd);
-  const scanState = scanLibrary();
+  const scanState = await scanLibrary();
   const sampleAssets = (scanState.assets ?? []).slice(0, 5);
 
   return {

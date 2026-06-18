@@ -20,6 +20,8 @@ import { buildCapabilityLines } from "../src/embedding/providers/open-clip/remed
 import { createSearchService } from "../src/retriever/query/search-service.js";
 import { createAlbumService } from "../src/retriever/album/album-service.js";
 import { runSearchCommand } from "../src/cli/commands/search.js";
+import { runIndexLikeCommand } from "../src/cli/commands/index-command-base.js";
+import { AppError } from "../src/shared/errors/app-error.js";
 
 async function withTempDir(callback) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mvi-storage-test-"));
@@ -350,6 +352,59 @@ test("qdrant vector repository upserts without duplicates and keeps stale embedd
   assert.equal(searchHits[0].embedding.embedding_id, embedding.embedding_id);
 });
 
+test("qdrant vector repository bulk upserts multiple embeddings in one points request", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+
+  await repository.initialize();
+
+  const firstEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-bulk-1",
+    local_identifier: "QDRANT/BULK/001",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:test",
+    source_fingerprint: "fp:qdrant-bulk-1",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+  const secondEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-bulk-2",
+    local_identifier: "QDRANT/BULK/002",
+    representation_kind: "video-poster-frame",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:test",
+    source_fingerprint: "fp:qdrant-bulk-2",
+    indexed_at: "2026-06-18T10:00:01.000Z",
+  });
+
+  await repository.upsertEmbeddings([
+    {
+      record: firstEmbedding,
+      vector: [0.1, 0.2, 0.3],
+    },
+    {
+      record: secondEmbedding,
+      vector: [0.3, 0.2, 0.1],
+    },
+  ]);
+
+  const pointsWrites = qdrant.state.calls.filter(
+    (call) => call.method === "PUT" && call.pathname === "/collections/media-index/points"
+  );
+
+  assert.equal(pointsWrites.length, 1);
+  assert.equal(pointsWrites[0].body.points.length, 2);
+  assert.equal(await repository.countEmbeddings(), 2);
+});
+
 test("init scaffold writes config and catalog storage while reporting qdrant backend info", async () => {
   await withTempDir(async (tempDir) => {
     const result = await initializeProjectScaffold(tempDir, { force: true });
@@ -429,6 +484,8 @@ test("forced refresh reruns do not create duplicate assets or embeddings", async
       }),
       extractRepresentationsFn: () => ({
         representation_count: 2,
+        image_representation_count: 1,
+        video_representation_count: 1,
         representations: [
           {
             local_identifier: "A1B2C3/L0/001",
@@ -473,6 +530,11 @@ test("forced refresh reruns do not create duplicate assets or embeddings", async
         },
       }),
       now: () => "2026-06-17T12:00:00.000Z",
+      clock: (() => {
+        const values = [0, 0, 10, 10, 30, 30, 40, 40, 80, 80, 95];
+        let index = 0;
+        return () => values[index++] ?? values[values.length - 1];
+      })(),
     });
 
     const firstRun = await pipeline.run({
@@ -504,6 +566,23 @@ test("forced refresh reruns do not create duplicate assets or embeddings", async
     assert.equal(firstRun.vector_index_state.indexed_images, 1);
     assert.equal(firstRun.vector_index_state.indexed_videos, 1);
     assert.equal(firstRun.vector_index_state.ready_embeddings, 2);
+    assert.equal(firstRun.timings.total_ms, 95);
+    assert.equal(firstRun.timings.scan_ms, 10);
+    assert.equal(firstRun.timings.extract_ms, 20);
+    assert.equal(firstRun.timings.prepare_ms, 10);
+    assert.equal(firstRun.timings.embed_ms, 40);
+    assert.equal(firstRun.timings.persist_ms, 15);
+    assert.equal(firstRun.slowest_stage.stage, "embed");
+    assert.equal(firstRun.slowest_stage.duration_ms, 40);
+    assert.equal(firstRun.breakdown.image_representation_count, 1);
+    assert.equal(firstRun.breakdown.video_representation_count, 1);
+    assert.equal(firstRun.breakdown.prepared_image_count, 1);
+    assert.equal(firstRun.breakdown.prepared_video_count, 1);
+    assert.equal(firstRun.breakdown.skipped_image_count, 0);
+    assert.equal(firstRun.breakdown.skipped_video_count, 0);
+    assert.equal(firstRun.throughput.scan_candidates_per_sec, 200);
+    assert.equal(firstRun.throughput.representations_extracted_per_sec, 100);
+    assert.equal(firstRun.throughput.embeddings_persisted_per_sec, 133.333);
     assert.equal(secondRun.persisted_asset_count, 2);
     assert.equal(secondRun.persisted_embedding_count, 2);
     assert.equal(secondRun.cache_mode, "refresh");
@@ -567,6 +646,11 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
       },
       catalogRepository,
       vectorRepository,
+      clock: (() => {
+        const values = [0, 0, 5];
+        let index = 0;
+        return () => values[index++] ?? values[values.length - 1];
+      })(),
     });
 
     const result = await pipeline.run({
@@ -585,6 +669,437 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
     assert.equal(result.persisted_assets[0], "A1B2C3/L0/001");
     assert.equal(result.vector_index_state.temp_file_usage, false);
     assert.equal(result.vector_index_state.ready_embeddings, 1);
+    assert.equal(result.timings.cache_read_ms, 5);
+    assert.equal(result.timings.total_ms, 5);
+    assert.equal(result.slowest_stage.stage, "cache-read");
+  });
+});
+
+test("index command profile output includes timings, throughput, and breakdown", async () => {
+  const result = await runIndexLikeCommand({
+    cwd: "/tmp/mvi",
+    args: ["--limit", "100", "--no-cache", "--profile"],
+    defaultUseCache: true,
+    summary: "Index completed.",
+    commandLabel: "index",
+    loadConfigFn: async () => ({
+      config: structuredClone(DEFAULT_CONFIG),
+      configPath: "/tmp/mvi/media-vector-index.config.json",
+      exists: true,
+    }),
+    createStorageRepositoriesFn: () => ({
+      storageRoot: "/tmp/mvi/.data",
+      catalogDbPath: "/tmp/mvi/.data/catalog-store.json",
+      vectorBackend: "qdrant",
+      vectorServiceUrl: "http://127.0.0.1:6333",
+      vectorCollectionName: "media-index",
+      catalogRepository: {
+        async initialize() {},
+      },
+      vectorRepository: {
+        async initialize() {},
+      },
+    }),
+    createIndexPipelineFn: () => ({
+      async run() {
+        return {
+          implemented: true,
+          phase: "ingestion",
+          status: "completed",
+          cache_mode: "refresh",
+          scan_state: {
+            framework_connection: "connected",
+            permission_status: "authorized",
+            library_access: "connected",
+          },
+          vector_index_state: {
+            temp_file_usage: false,
+            indexed_images: 70,
+            indexed_videos: 20,
+          },
+          scanned_asset_count: 100,
+          extracted_representation_count: 95,
+          persisted_asset_count: 90,
+          persisted_embedding_count: 90,
+          skipped_representation_count: 5,
+          timings: {
+            total_ms: 5000,
+            cache_read_ms: 0,
+            scan_ms: 500,
+            extract_ms: 1200,
+            prepare_ms: 300,
+            embed_ms: 2200,
+            persist_ms: 800,
+          },
+          throughput: {
+            scan_candidates_per_sec: 200,
+            representations_extracted_per_sec: 79.167,
+            embeddings_persisted_per_sec: 112.5,
+          },
+          breakdown: {
+            image_representation_count: 80,
+            video_representation_count: 15,
+            prepared_image_count: 75,
+            prepared_video_count: 15,
+            skipped_image_count: 4,
+            skipped_video_count: 1,
+            failed_embedding_count: 2,
+            skip_reasons: [
+              { name: "timeout", count: 3 },
+              { name: "missing-avasset", count: 2 },
+            ],
+          },
+          slowest_stage: {
+            stage: "embed",
+            duration_ms: 2200,
+            percent_of_total: 44,
+          },
+        };
+      },
+    }),
+  });
+
+  assert.equal(result.profile_enabled, true);
+  assert.equal(result.timings.embed_ms, 2200);
+  assert.equal(result.throughput.embeddings_persisted_per_sec, 112.5);
+  assert.equal(result.breakdown.prepared_video_count, 15);
+  assert.equal(result.slowest_stage.stage, "embed");
+  assert.ok(result.lines.includes("Total time: 5.00s"));
+  assert.ok(result.lines.includes("Timing embed: 2.20s"));
+  assert.ok(result.lines.includes("Throughput persist: 112.500 embeddings/sec"));
+  assert.ok(result.lines.includes("Representation breakdown: image 80, video 15"));
+  assert.ok(result.lines.includes("Top skip reasons: timeout:3, missing-avasset:2"));
+});
+
+test("index pipeline extracts in chunks to avoid oversized bridge payloads", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const { fetchFn } = createMockQdrantFetch();
+    const vectorRepository = createVectorRepository({
+      backend: "qdrant",
+      serviceUrl: "http://127.0.0.1:6333",
+      collectionName: "media-index",
+      distance: "cosine",
+      fetchFn,
+    });
+
+    await catalogRepository.initialize();
+    await vectorRepository.initialize();
+
+    const extractionCalls = [];
+    let bulkPersistCallCount = 0;
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: async () => ({
+        valid_asset_count: 3,
+        assets: [
+          { local_identifier: "A/L0/001", asset_type: "image" },
+          { local_identifier: "B/L0/001", asset_type: "image" },
+          { local_identifier: "C/L0/001", asset_type: "video" },
+        ],
+      }),
+      extractRepresentationsFn: async ({ limit, offset }) => {
+        extractionCalls.push({ limit, offset });
+        const source = [
+          {
+            local_identifier: "A/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 4,
+            bytes_base64: "YWJjZA==",
+            metadata: { status: "ok" },
+          },
+          {
+            local_identifier: "B/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 4,
+            bytes_base64: "ZWZnaA==",
+            metadata: { status: "ok" },
+          },
+          {
+            local_identifier: "C/L0/001",
+            asset_type: "video",
+            representation_kind: "video-poster-frame",
+            byte_length: 4,
+            bytes_base64: "aWprbA==",
+            metadata: { status: "ok" },
+          },
+        ];
+        const slice = source.slice(offset, offset + limit);
+
+        return {
+          implemented: true,
+          available_asset_count: source.length,
+          representation_count: slice.length,
+          image_representation_count: slice.filter((item) => item.asset_type === "image").length,
+          video_representation_count: slice.filter((item) => item.asset_type === "video").length,
+          representations: slice,
+          errors: [],
+        };
+      },
+      createEmbeddingProviderFn: () => ({
+        modelIdentity: "open-clip:ViT-B-32:test",
+        async embedRepresentations({ representations }) {
+          return representations.map((representation) => ({
+            local_identifier: representation.local_identifier,
+            representation_kind: representation.representation_kind,
+            status: "ready",
+            vector: [0.1, 0.2, 0.3],
+            embedding_provider: "open-clip",
+            embedding_model: "ViT-B-32",
+            model_identity: "open-clip:ViT-B-32:test",
+          }));
+        },
+      }),
+      catalogRepository,
+      vectorRepository: {
+        ...vectorRepository,
+        async upsertEmbeddings(items) {
+          bulkPersistCallCount += 1;
+          return vectorRepository.upsertEmbeddings(items);
+        },
+      },
+    });
+
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.indexer = {
+      ...(config.indexer ?? {}),
+      extraction_batch_size: 2,
+    };
+
+    const result = await pipeline.run({
+      config,
+      limit: 3,
+      timeoutSeconds: 30,
+      useCache: false,
+    });
+
+    assert.deepEqual(extractionCalls, [
+      { limit: 2, offset: 0 },
+      { limit: 1, offset: 2 },
+    ]);
+    assert.equal(result.extracted_representation_count, 3);
+    assert.equal(result.persisted_embedding_count, 3);
+    assert.equal(result.breakdown.prepared_image_count, 2);
+    assert.equal(result.breakdown.prepared_video_count, 1);
+    assert.equal(bulkPersistCallCount, 2);
+  });
+});
+
+test("index pipeline keeps completed chunks persisted when a later chunk fails", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const { fetchFn } = createMockQdrantFetch();
+    const vectorRepository = createVectorRepository({
+      backend: "qdrant",
+      serviceUrl: "http://127.0.0.1:6333",
+      collectionName: "media-index",
+      distance: "cosine",
+      fetchFn,
+    });
+
+    await catalogRepository.initialize();
+    await vectorRepository.initialize();
+
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: async () => ({
+        valid_asset_count: 3,
+        assets: [
+          { local_identifier: "A/L0/001", asset_type: "image" },
+          { local_identifier: "B/L0/001", asset_type: "image" },
+          { local_identifier: "C/L0/001", asset_type: "video" },
+        ],
+      }),
+      extractRepresentationsFn: async ({ limit, offset }) => {
+        if (offset === 2) {
+          throw new Error("chunk exploded");
+        }
+
+        const source = [
+          {
+            local_identifier: "A/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 4,
+            bytes_base64: "YWJjZA==",
+            metadata: { status: "ok" },
+          },
+          {
+            local_identifier: "B/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 4,
+            bytes_base64: "ZWZnaA==",
+            metadata: { status: "ok" },
+          },
+        ];
+        const slice = source.slice(offset, offset + limit);
+
+        return {
+          implemented: true,
+          available_asset_count: 3,
+          representation_count: slice.length,
+          image_representation_count: slice.filter((item) => item.asset_type === "image").length,
+          video_representation_count: slice.filter((item) => item.asset_type === "video").length,
+          representations: slice,
+          errors: [],
+        };
+      },
+      createEmbeddingProviderFn: () => ({
+        modelIdentity: "open-clip:ViT-B-32:test",
+        async embedRepresentations({ representations }) {
+          return representations.map((representation) => ({
+            local_identifier: representation.local_identifier,
+            representation_kind: representation.representation_kind,
+            status: "ready",
+            vector: [0.1, 0.2, 0.3],
+            embedding_provider: "open-clip",
+            embedding_model: "ViT-B-32",
+            model_identity: "open-clip:ViT-B-32:test",
+          }));
+        },
+      }),
+      catalogRepository,
+      vectorRepository,
+    });
+
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.indexer = {
+      ...(config.indexer ?? {}),
+      extraction_batch_size: 2,
+    };
+
+    await assert.rejects(
+      pipeline.run({
+        config,
+        limit: 3,
+        timeoutSeconds: 30,
+        useCache: false,
+      }),
+      (error) => {
+        assert.equal(error.code, "INDEX_PIPELINE_PARTIAL_FAILURE");
+        assert.equal(error.details.persisted_embedding_count, 2);
+        return true;
+      }
+    );
+
+    assert.equal(await catalogRepository.countAssets(), 2);
+    assert.equal(await vectorRepository.countEmbeddings(), 2);
+  });
+});
+
+test("index pipeline retries transient qdrant bulk persist failures before succeeding", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    await catalogRepository.initialize();
+
+    let persistAttempts = 0;
+    const progressEvents = [];
+
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: async () => ({
+        valid_asset_count: 2,
+        assets: [
+          { local_identifier: "A/L0/001", asset_type: "image" },
+          { local_identifier: "B/L0/001", asset_type: "image" },
+        ],
+      }),
+      extractRepresentationsFn: async ({ limit, offset }) => {
+        const source = [
+          {
+            local_identifier: "A/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 4,
+            bytes_base64: "YWJjZA==",
+            metadata: { status: "ok" },
+          },
+          {
+            local_identifier: "B/L0/001",
+            asset_type: "image",
+            representation_kind: "image-thumbnail",
+            byte_length: 4,
+            bytes_base64: "ZWZnaA==",
+            metadata: { status: "ok" },
+          },
+        ];
+        const slice = source.slice(offset, offset + limit);
+
+        return {
+          implemented: true,
+          available_asset_count: source.length,
+          representation_count: slice.length,
+          image_representation_count: slice.length,
+          video_representation_count: 0,
+          representations: slice,
+          errors: [],
+        };
+      },
+      createEmbeddingProviderFn: () => ({
+        modelIdentity: "open-clip:ViT-B-32:test",
+        async embedRepresentations({ representations }) {
+          return representations.map((representation) => ({
+            local_identifier: representation.local_identifier,
+            representation_kind: representation.representation_kind,
+            status: "ready",
+            vector: [0.1, 0.2, 0.3],
+            embedding_provider: "open-clip",
+            embedding_model: "ViT-B-32",
+            model_identity: "open-clip:ViT-B-32:test",
+          }));
+        },
+      }),
+      catalogRepository,
+      vectorRepository: {
+        async initialize() {},
+        async upsertEmbeddings(items) {
+          persistAttempts += 1;
+          if (persistAttempts === 1) {
+            throw new AppError("Failed to reach Qdrant at http://127.0.0.1:6333.", {
+              code: "VECTOR_BACKEND_UNREACHABLE",
+            });
+          }
+
+          return items.map(({ record }) => record);
+        },
+        async countEmbeddings() {
+          return 0;
+        },
+        async getActiveEmbedding() {
+          return null;
+        },
+      },
+      onProgress(event) {
+        progressEvents.push(event);
+      },
+    });
+
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.indexer = {
+      ...(config.indexer ?? {}),
+      extraction_batch_size: 2,
+      write_batch_size: 2,
+    };
+
+    const result = await pipeline.run({
+      config,
+      limit: 2,
+      timeoutSeconds: 30,
+      useCache: false,
+    });
+
+    assert.equal(persistAttempts, 2);
+    assert.equal(result.persisted_embedding_count, 2);
+    assert.equal(
+      progressEvents.some((event) => event.event === "persist-retry" && event.attempt === 1),
+      true
+    );
   });
 });
 

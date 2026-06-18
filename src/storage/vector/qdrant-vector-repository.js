@@ -231,6 +231,26 @@ function normalizePointRecord(point, { includeVector = false } = {}) {
   return record;
 }
 
+function normalizeUpsertItem(item = {}) {
+  const normalizedRecord = buildEmbeddingRecord({
+    ...item.record,
+    vector: item.vector,
+    indexed_at: item?.record?.indexed_at ?? new Date().toISOString(),
+  });
+  requireEmbeddingRecord(normalizedRecord);
+
+  if (!Array.isArray(item.vector) || item.vector.length === 0) {
+    throw new AppError("Vector payload must be a non-empty number array.", {
+      code: "VECTOR_VALUES_INVALID",
+    });
+  }
+
+  return {
+    record: normalizedRecord,
+    vector: item.vector.map(Number),
+  };
+}
+
 export function createQdrantVectorRepository({
   serviceUrl,
   collectionName,
@@ -420,34 +440,48 @@ export function createQdrantVectorRepository({
   }
 
   async function upsertEmbedding({ record, vector }) {
-    const normalizedRecord = buildEmbeddingRecord({
-      ...record,
-      vector,
-      indexed_at: record?.indexed_at ?? new Date().toISOString(),
-    });
-    requireEmbeddingRecord(normalizedRecord);
+    const [persisted] = await upsertEmbeddings([{ record, vector }]);
+    return persisted ?? null;
+  }
 
-    if (!Array.isArray(vector) || vector.length === 0) {
-      throw new AppError("Vector payload must be a non-empty number array.", {
-        code: "VECTOR_VALUES_INVALID",
-      });
+  async function upsertEmbeddings(items = []) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return [];
     }
 
-    await ensureCollection(vector.length);
-    const qdrantPointId = toPointId(normalizedRecord.embedding_id);
+    const normalizedItems = items.map((item) => normalizeUpsertItem(item));
+    const vectorSize = normalizedItems[0].vector.length;
 
-    await client.upsertPoints(collectionName, [
-      {
-        id: qdrantPointId,
-        vector: vector.map(Number),
+    for (const item of normalizedItems) {
+      if (item.vector.length !== vectorSize) {
+        throw new AppError("All vectors in a bulk upsert must have the same dimensions.", {
+          code: "VECTOR_DIMENSIONS_MISMATCH",
+          details: {
+            collection_name: collectionName,
+            expected_size: vectorSize,
+            received_size: item.vector.length,
+            embedding_id: item.record.embedding_id,
+          },
+        });
+      }
+    }
+
+    await ensureCollection(vectorSize);
+
+    await client.upsertPoints(
+      collectionName,
+      normalizedItems.map(({ record: normalizedRecord, vector: normalizedVector }) => ({
+        id: toPointId(normalizedRecord.embedding_id),
+        vector: normalizedVector,
         payload: {
           ...normalizedRecord,
-          embedding_dimensions: normalizedRecord.embedding_dimensions ?? vector.length,
+          embedding_dimensions:
+            normalizedRecord.embedding_dimensions ?? normalizedVector.length,
         },
-      },
-    ]);
+      }))
+    );
 
-    return getEmbeddingById(normalizedRecord.embedding_id);
+    return normalizedItems.map(({ record }) => record);
   }
 
   async function saveEmbedding(payload) {
@@ -540,6 +574,7 @@ export function createQdrantVectorRepository({
     listEmbeddingsForAsset,
     saveEmbedding,
     upsertEmbedding,
+    upsertEmbeddings,
     markEmbeddingStatus,
     getActiveEmbedding,
     searchByVector,

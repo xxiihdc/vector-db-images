@@ -5,7 +5,7 @@ export async function runPhotosProbeOriginalsCommand({ cwd }) {
   const configState = await loadConfig(cwd);
   const allowNetworkAccess =
     configState.config.extractor?.allow_network_access ?? true;
-  const probeState = probeOriginalPhotosAccess({
+  const probeState = await probeOriginalPhotosAccess({
     allowNetworkAccess,
   });
   const sampleAssets = (probeState.probed_assets ?? []).slice(0, 3);

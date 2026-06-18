@@ -1,8 +1,8 @@
 import { scanPhotosAssets } from "../photos/bridge-client.js";
 import { createAssetCandidate } from "../contracts/asset-candidate.js";
 
-export function scanLibrary() {
-  const scanState = scanPhotosAssets();
+export async function scanLibrary() {
+  const scanState = await scanPhotosAssets();
 
   return {
     ...scanState,

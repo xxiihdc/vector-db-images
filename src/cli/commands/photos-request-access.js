@@ -3,7 +3,7 @@ import { requestPhotosAccess } from "../../scanner/photos/bridge-client.js";
 
 export async function runPhotosRequestAccessCommand({ cwd }) {
   const configState = await loadConfig(cwd);
-  const bridgeState = requestPhotosAccess();
+  const bridgeState = await requestPhotosAccess();
 
   return {
     ...bridgeState,

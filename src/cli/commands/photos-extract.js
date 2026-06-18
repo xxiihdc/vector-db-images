@@ -23,7 +23,7 @@ export async function runPhotosExtractCommand({ cwd, args = [] }) {
   const limit = readIntegerFlag(args, "--limit", 10);
   const timeoutSeconds = readIntegerFlag(args, "--timeout-seconds", 30);
 
-  const extractionState = extractPhotosRepresentations({
+  const extractionState = await extractPhotosRepresentations({
     allowNetworkAccess,
     limit,
     thumbnailSize,

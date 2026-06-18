@@ -7,6 +7,7 @@ import json
 import platform
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -18,6 +19,13 @@ DEFAULT_PROBE_TIMEOUT_SECONDS = 30
 DEFAULT_EXTRACT_LIMIT = 10
 DEFAULT_THUMBNAIL_SIZE = 224
 DEFAULT_EXTRACT_TIMEOUT_SECONDS = 30
+DEFAULT_EXTRACT_PROGRESS_EVERY = 25
+DEFAULT_EXTRACT_OFFSET = 0
+
+
+def emit_progress(message: str) -> None:
+    sys.stderr.write(f"{message}\n")
+    sys.stderr.flush()
 
 
 def load_photos_runtime() -> Tuple[dict, Optional[Dict[str, object]]]:
@@ -888,6 +896,7 @@ def extract_recent_representations(
     permission_status: str,
     allow_network_access: bool,
     extract_limit: int,
+    extract_offset: int,
     thumbnail_size: int,
     timeout_seconds: int,
 ) -> dict:
@@ -917,16 +926,58 @@ def extract_recent_representations(
 
     fetch_result = build_recent_assets_fetch_result(modules)
     available_asset_count = int(fetch_result.count())
+    start_index = min(max(0, int(extract_offset)), available_asset_count)
+    target_asset_count = max(
+        0,
+        min(available_asset_count - start_index, int(extract_limit)),
+    )
     representations = []
     image_representation_count = 0
     video_representation_count = 0
+    ok_count = 0
+    error_count = 0
+    timeout_count = 0
+    skipped_count = 0
+    progress_every = DEFAULT_EXTRACT_PROGRESS_EVERY
 
-    for index in range(min(available_asset_count, extract_limit)):
+    emit_progress(
+        "[bridge] extraction starting: "
+        f"available={available_asset_count}, offset={start_index}, limit={extract_limit}, target={target_asset_count}, "
+        f"thumbnail={thumbnail_size}, timeout={timeout_seconds}s, network={'on' if allow_network_access else 'off'}"
+    )
+
+    for relative_index in range(target_asset_count):
+        index = start_index + relative_index
         asset = fetch_result.objectAtIndex_(index)
         normalized_asset = normalize_asset(asset, modules)
         if normalized_asset is None:
+            skipped_count += 1
+            if (
+                (relative_index + 1) % progress_every == 0
+                or relative_index + 1 == target_asset_count
+            ):
+                emit_progress(
+                    "[bridge] extraction progress: "
+                    f"processed={relative_index + 1}/{target_asset_count}, ready={len(representations)}, "
+                    f"ok={ok_count}, error={error_count}, timeout={timeout_count}, skipped={skipped_count}"
+                )
             continue
 
+        should_log_asset = (
+            relative_index == 0
+            or normalized_asset["asset_type"] == "video"
+            or (relative_index + 1) % progress_every == 0
+            or relative_index + 1 == target_asset_count
+        )
+        if should_log_asset:
+            emit_progress(
+                "[bridge] extraction asset start: "
+                f"{relative_index + 1}/{target_asset_count} global={index + 1}/{available_asset_count} "
+                f"{normalized_asset['asset_type']} "
+                f"{normalized_asset['local_identifier']}"
+            )
+
+        started_at = time.perf_counter()
         if normalized_asset["asset_type"] == "image":
             representation = extract_image_thumbnail_representation(
                 asset,
@@ -951,6 +1002,47 @@ def extract_recent_representations(
             continue
 
         representations.append(representation)
+        duration_seconds = time.perf_counter() - started_at
+        status = representation.get("metadata", {}).get("status", "unknown")
+
+        if status == "ok":
+            ok_count += 1
+        else:
+            error_count += 1
+
+        if representation.get("metadata", {}).get("timed_out"):
+            timeout_count += 1
+
+        if should_log_asset or status != "ok" or duration_seconds >= 5.0:
+            error_text = representation.get("metadata", {}).get("error")
+            emit_progress(
+                "[bridge] extraction asset done: "
+                f"{relative_index + 1}/{target_asset_count} global={index + 1}/{available_asset_count} "
+                f"{representation['asset_type']} "
+                f"{representation['local_identifier']} status={status} "
+                f"bytes={representation.get('byte_length', 0)} "
+                f"duration={duration_seconds:.2f}s "
+                f"source={representation.get('metadata', {}).get('source_mode', 'unknown')}"
+                + (f" error={error_text}" if error_text else "")
+            )
+
+        if (
+            (relative_index + 1) % progress_every == 0
+            or relative_index + 1 == target_asset_count
+        ):
+            emit_progress(
+                "[bridge] extraction progress: "
+                f"processed={relative_index + 1}/{target_asset_count}, ready={len(representations)}, "
+                f"images={image_representation_count}, videos={video_representation_count}, "
+                f"ok={ok_count}, error={error_count}, timeout={timeout_count}, skipped={skipped_count}"
+            )
+
+    emit_progress(
+        "[bridge] extraction completed: "
+        f"processed={target_asset_count}, ready={len(representations)}, "
+        f"images={image_representation_count}, videos={video_representation_count}, "
+        f"ok={ok_count}, error={error_count}, timeout={timeout_count}, skipped={skipped_count}"
+    )
 
     return {
         "implemented": True,
@@ -1910,6 +2002,7 @@ def handle_probe_original_access(
 def handle_extract_representations(
     allow_network_access: bool,
     extract_limit: int,
+    extract_offset: int,
     thumbnail_size: int,
     timeout_seconds: int,
 ) -> dict:
@@ -1922,6 +2015,7 @@ def handle_extract_representations(
         permission_status,
         allow_network_access,
         extract_limit,
+        extract_offset,
         thumbnail_size,
         timeout_seconds,
     )
@@ -1934,6 +2028,7 @@ def handle_extract_representations(
             "asset_count_probe": asset_count_probe,
             "allow_network_access": bool(allow_network_access),
             "extract_limit": int(extract_limit),
+            "extract_offset": int(extract_offset),
             "thumbnail_size": int(thumbnail_size),
             "extract_timeout_seconds": int(timeout_seconds),
             "available_asset_count": extraction_state["available_asset_count"],
@@ -2062,6 +2157,7 @@ def main() -> int:
         "--probe-timeout-seconds", type=int, default=DEFAULT_PROBE_TIMEOUT_SECONDS
     )
     parser.add_argument("--extract-limit", type=int, default=DEFAULT_EXTRACT_LIMIT)
+    parser.add_argument("--extract-offset", type=int, default=DEFAULT_EXTRACT_OFFSET)
     parser.add_argument("--thumbnail-size", type=int, default=DEFAULT_THUMBNAIL_SIZE)
     parser.add_argument(
         "--extract-timeout-seconds", type=int, default=DEFAULT_EXTRACT_TIMEOUT_SECONDS
@@ -2086,6 +2182,7 @@ def main() -> int:
         "extract-representations": lambda: handle_extract_representations(
             allow_network_access=args.allow_network_access == "true",
             extract_limit=max(1, args.extract_limit),
+            extract_offset=max(0, args.extract_offset),
             thumbnail_size=max(1, args.thumbnail_size),
             timeout_seconds=max(1, args.extract_timeout_seconds),
         ),

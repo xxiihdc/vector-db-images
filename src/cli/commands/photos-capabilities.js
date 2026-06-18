@@ -3,7 +3,7 @@ import { probePhotosCapabilities } from "../../scanner/photos/bridge-client.js";
 
 export async function runPhotosCapabilitiesCommand({ cwd }) {
   const configState = await loadConfig(cwd);
-  const capabilityState = probePhotosCapabilities();
+  const capabilityState = await probePhotosCapabilities();
 
   return {
     ...capabilityState,

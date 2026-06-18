@@ -90,6 +90,16 @@ At this stage, the index pipeline is wired through a real embedding provider abs
 
 The working debug flow should start with a lightweight capability probe so dependency or runtime mismatches are separated from extraction logic failures early.
 
+For long-running full-library indexing, the Photos bridge should not behave like a black box: native extraction progress is expected to stream live to the terminal so the user can tell whether the bottleneck is a specific asset, video poster-frame generation, or simple scale.
+
+For the same workflow, the index command should also avoid requesting one monolithic extraction payload from the bridge; extraction must be chunked so large libraries do not fail purely on bridge transport size.
+
+The MVP indexing flow should preserve completed work across partial failures by checkpointing each chunk into local storage before the next chunk starts.
+
+For local sidecar performance, vector persistence to `Qdrant` should prefer bulk chunk writes over one-request-per-embedding persistence.
+
+The same local-first workflow should tolerate short `Qdrant` sidecar transport hiccups by retrying sub-batch writes before treating the chunk as failed.
+
 ## Retrieval Contract v1
 
 Each retrieval result returned to an AI agent should include:

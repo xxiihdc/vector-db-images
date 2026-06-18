@@ -112,9 +112,15 @@ Quy ước:
 - [x] Đồng bộ phase naming và nguồn ưu tiên giữa `AGENTS.md`, `README.md`, và checklist MVP
 - [x] Loại bỏ `docs/backlog.md` vì trùng trách nhiệm với checklist MVP
 - [x] Thêm diagnostic logging tối giản để lưu stacktrace lỗi CLI và bridge vào local logs
+- [x] Bỏ "hộp đen" khỏi Photos bridge bằng live progress log cho extraction dài
+- [x] Chia extraction bridge payload theo batch nhỏ để full index không vỡ vì JSON quá lớn
+- [x] Đổi index sang chunk checkpoint để lỗi giữa chừng vẫn giữ phần đã persist
+- [x] Tối ưu persist `Qdrant` bằng bulk upsert theo chunk
 - [ ] Tạo fixture hoặc test strategy phù hợp cho Photos access, iCloud-backed assets, và in-memory representation flow
 - [ ] Verify end-to-end flow: connect Photos -> xin quyền -> index -> search -> album output
 - [ ] Viết test cho identity, re-index, zero-storage representation path, retrieval output, album update flow
+- [x] Thêm progress logging tối thiểu cho `index`/`reindex` để theo dõi batch lớn
+- [x] Thêm timing/throughput breakdown cho `index` để đo bottleneck theo stage
 - [ ] Cập nhật `README.md` với quickstart và workflow CLI
 - [x] Cập nhật `docs/product.md` theo các quyết định MVP đã chốt
 - [x] Cập nhật `docs/architecture.md` theo storage boundary, indexing boundary, retrieval contract

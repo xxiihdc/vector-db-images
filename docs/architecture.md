@@ -154,6 +154,7 @@ src/
 - `src/scanner/photos/`
   - contains Photos-framework-specific adapters and permission-aware library access
   - isolates macOS integration from the rest of the runtime
+  - streams long-running native extraction progress on `stderr` so CLI flows can see which asset the bridge is currently processing
 
 - `src/scanner/services/`
   - contains traversal and filtering flows built on top of Photos adapters
@@ -192,6 +193,8 @@ src/
 - `src/indexer/pipeline/`
   - contains orchestration from scanned asset to extracted representation to persisted vector
   - owns flow coordination, not Photos access details
+  - chunks bridge extraction requests so full-library indexing does not require one giant JSON payload in memory between Python and Node
+  - checkpoints each chunk through prepare, embed, and persist before moving to the next chunk so reruns can keep already-indexed progress after a later failure
 
 - `src/indexer/records/`
   - contains record builders for asset rows and embedding rows
@@ -217,6 +220,8 @@ src/
   - contains vector repository interfaces and local backend adapters
   - hides backend choice from indexer and retriever
   - current Phase 4 backend keeps a lightweight legacy JSON adapter for tests/migration, while MVP semantic retrieval uses `Qdrant` behind the same repository boundary
+  - `Qdrant` writes should be batched per indexing chunk so local semantic persistence is not dominated by one-point-at-a-time HTTP overhead
+  - transient local-sidecar write failures should be retried at the sub-batch level so a short socket hiccup does not abort the whole indexing run immediately
 
 - `src/storage/migrations/`
   - contains local schema evolution helpers if the project needs them

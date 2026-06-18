@@ -290,6 +290,73 @@ export function createJsonVectorRepository({ filePath }) {
     return getEmbeddingById(normalizedRecord.embedding_id);
   }
 
+  async function upsertEmbeddings(items = []) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return [];
+    }
+
+    const store = await loadStore(filePath);
+    const persisted = [];
+
+    for (const item of items) {
+      const normalizedRecord = buildEmbeddingRecord({
+        ...item?.record,
+        vector: item?.vector,
+        indexed_at: item?.record?.indexed_at ?? new Date().toISOString(),
+      });
+      requireEmbeddingRecord(normalizedRecord);
+
+      if (item?.vector && (!Array.isArray(item.vector) || item.vector.length === 0)) {
+        throw new AppError("Vector payload must be a non-empty number array.", {
+          code: "VECTOR_VALUES_INVALID",
+        });
+      }
+
+      if (item?.vector) {
+        const nextVector = normalizeVectorEntry({
+          vector_ref: normalizedRecord.vector_ref,
+          values: item.vector,
+          embedding_dimensions: normalizedRecord.embedding_dimensions,
+          updated_at: normalizedRecord.indexed_at,
+        });
+
+        if (!nextVector.vector_ref) {
+          throw new AppError("Vector payload requires `vector_ref`.", {
+            code: "VECTOR_REF_REQUIRED",
+          });
+        }
+
+        const currentVectorIndex = store.vectors.findIndex(
+          (vector) => vector.vector_ref === nextVector.vector_ref
+        );
+
+        if (currentVectorIndex === -1) {
+          store.vectors.push(nextVector);
+        } else {
+          store.vectors[currentVectorIndex] = nextVector;
+        }
+      }
+
+      const currentEmbeddingIndex = store.embeddings.findIndex(
+        (embedding) => embedding.embedding_id === normalizedRecord.embedding_id
+      );
+
+      if (currentEmbeddingIndex === -1) {
+        store.embeddings.push(normalizedRecord);
+      } else {
+        store.embeddings[currentEmbeddingIndex] = buildEmbeddingRecord({
+          ...store.embeddings[currentEmbeddingIndex],
+          ...normalizedRecord,
+        });
+      }
+
+      persisted.push(normalizedRecord);
+    }
+
+    await saveStore(filePath, store);
+    return persisted;
+  }
+
   async function saveEmbedding(payload) {
     return upsertEmbedding(payload);
   }
@@ -438,6 +505,7 @@ export function createJsonVectorRepository({ filePath }) {
     putVector,
     saveEmbedding,
     upsertEmbedding,
+    upsertEmbeddings,
     markEmbeddingStatus,
     getActiveEmbedding,
     listActiveEmbeddings,

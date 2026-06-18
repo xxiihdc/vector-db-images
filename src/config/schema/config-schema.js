@@ -34,5 +34,32 @@ export function validateConfig(config) {
     }
   }
 
+  if (!config.storage || typeof config.storage !== "object") {
+    throw new AppError("Config storage section must be an object.", {
+      code: "CONFIG_STORAGE_INVALID",
+    });
+  }
+
+  if (!config.storage.vector_backend) {
+    throw new AppError("Missing config field: storage.vector_backend", {
+      code: "CONFIG_FIELD_MISSING",
+      details: { field: "storage.vector_backend" },
+    });
+  }
+
+  if (!config.storage.vector_service_url) {
+    throw new AppError("Missing config field: storage.vector_service_url", {
+      code: "CONFIG_FIELD_MISSING",
+      details: { field: "storage.vector_service_url" },
+    });
+  }
+
+  if (!config.storage.vector_collection_name) {
+    throw new AppError("Missing config field: storage.vector_collection_name", {
+      code: "CONFIG_FIELD_MISSING",
+      details: { field: "storage.vector_collection_name" },
+    });
+  }
+
   return config;
 }

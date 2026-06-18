@@ -55,7 +55,9 @@ export async function runIndexLikeCommand({
     config_exists: configState.exists,
     storage_root: storageState.storageRoot,
     catalog_db_path: storageState.catalogDbPath,
-    vector_db_path: storageState.vectorDbPath,
+    vector_backend: storageState.vectorBackend,
+    vector_service_url: storageState.vectorServiceUrl,
+    vector_collection_name: storageState.vectorCollectionName,
     summary,
     lines: [
       `Command: ${commandLabel}`,
@@ -76,7 +78,9 @@ export async function runIndexLikeCommand({
       ...formatStorageSummaryLines({
         storageRoot: storageState.storageRoot,
         catalogDbPath: storageState.catalogDbPath,
-        vectorDbPath: storageState.vectorDbPath,
+        vectorBackend: storageState.vectorBackend,
+        vectorServiceUrl: storageState.vectorServiceUrl,
+        vectorCollectionName: storageState.vectorCollectionName,
       }),
     ],
   };

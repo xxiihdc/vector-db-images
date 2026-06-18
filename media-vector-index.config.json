@@ -7,7 +7,11 @@
   "storage": {
     "root_dir": ".data",
     "catalog_db_path": ".data/catalog-store.json",
-    "vector_db_path": ".data/vector-store.json"
+    "vector_backend": "qdrant",
+    "vector_service_url": "http://127.0.0.1:6333",
+    "vector_collection_name": "media-index",
+    "vector_distance": "cosine",
+    "vector_timeout_ms": 10000
   },
   "scanner": {
     "include_images": true,

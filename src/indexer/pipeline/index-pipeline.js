@@ -246,7 +246,7 @@ export function createIndexPipeline({
         }),
       });
 
-      await vectorRepository.saveEmbedding({
+      await vectorRepository.upsertEmbedding({
         record: embeddingRecord,
         vector: embeddingResult.vector,
       });

@@ -102,11 +102,11 @@ Each retrieval result returned to an AI agent should include:
 6. optional debug metadata
 7. `match_evidence` summarizing why this result matched
 
-Ở milestone hiện tại của Phase 4, local semantic search core đã chạy được trên local vector store cho cả ảnh và video bằng cách:
+Ở milestone hiện tại của Phase 4, local semantic search core đã chạy được trên `Qdrant` local sidecar cho cả ảnh và video bằng cách:
 
 1. normalize text query ở Node runtime
 2. embed query bằng cùng provider/model identity dùng lúc indexing
-3. rank image thumbnail và video poster frame embeddings bằng local similarity scoring
+3. query vector backend theo cùng model identity rồi nhận top matches từ ANN/vector index backend
 4. trả về retrieval result đủ `local_identifier` để nối tiếp sang album write-back ở bước sau
 
 Ở cùng giai đoạn này, runtime cũng đã có path riêng để tạo hoặc tìm lại album `AI Search Results` trong Apple Photos.
@@ -122,7 +122,7 @@ Album output flow hiện cũng đã có Node-side orchestration đủ để:
 CLI milestone hiện tại đã nối hai nửa đó lại thành command `search <query>`:
 
 1. nhận natural-language query từ Terminal
-2. chạy local semantic ranking trên vector store hiện có
+2. chạy semantic query trên vector backend hiện có
 3. write kết quả match trở lại album `AI Search Results`
 4. in debug output gồm query text, counts, top match, và unresolved write-back rows
 
@@ -131,7 +131,7 @@ For MVP setup, the runtime also defines two storage-facing contracts:
 1. an `asset record` keyed by deterministic `asset_id` plus `PHAsset.localIdentifier`
 2. an `embedding record` keyed by deterministic `embedding_id` and linked back to the asset record
 
-For the current repository milestone, the first local persistence backend is JSON-backed file storage behind repository interfaces for the asset catalog and vector layer. This keeps Phase 3 lightweight while preserving a clean swap path for a later SQLite-backed implementation if needed.
+For the current repository milestone, the local catalog stays JSON-backed for asset metadata, while semantic vector persistence and lookup now run through a local `Qdrant` backend behind repository interfaces. This keeps the Photos-facing data model lightweight while moving ANN/vector search out of the app layer.
 
 ## Non-Goals
 

@@ -35,7 +35,11 @@ export async function initializeProjectScaffold(cwd, options = {}) {
 
   if (configExists && !force) {
     const config = validateConfig(await readJsonFile(configPath));
-    const storage = await initializeStorageRepositories({ cwd, config });
+    const storage = await initializeStorageRepositories({
+      cwd,
+      config,
+      tolerateVectorBackendFailure: true,
+    });
 
     return {
       created: false,
@@ -47,7 +51,11 @@ export async function initializeProjectScaffold(cwd, options = {}) {
 
   const config = structuredClone(DEFAULT_CONFIG);
   await writeJsonFile(configPath, config);
-  const storage = await initializeStorageRepositories({ cwd, config });
+  const storage = await initializeStorageRepositories({
+    cwd,
+    config,
+    tolerateVectorBackendFailure: true,
+  });
 
   return {
     created: true,

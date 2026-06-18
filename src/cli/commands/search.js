@@ -90,7 +90,9 @@ export async function runSearchCommand({
     config_exists: configState.exists,
     storage_root: storageState.storageRoot,
     catalog_db_path: storageState.catalogDbPath,
-    vector_db_path: storageState.vectorDbPath,
+    vector_backend: storageState.vectorBackend,
+    vector_service_url: storageState.vectorServiceUrl,
+    vector_collection_name: storageState.vectorCollectionName,
     query_text: searchState.query_text,
     limit: parsedArgs.limit,
     result_count: searchState.result_count,
@@ -125,7 +127,9 @@ export async function runSearchCommand({
       ...formatStorageSummaryLines({
         storageRoot: storageState.storageRoot,
         catalogDbPath: storageState.catalogDbPath,
-        vectorDbPath: storageState.vectorDbPath,
+        vectorBackend: storageState.vectorBackend,
+        vectorServiceUrl: storageState.vectorServiceUrl,
+        vectorCollectionName: storageState.vectorCollectionName,
       }),
     ],
   };

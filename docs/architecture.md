@@ -216,7 +216,7 @@ src/
 - `src/storage/vector/`
   - contains vector repository interfaces and local backend adapters
   - hides backend choice from indexer and retriever
-  - current Phase 3 backend uses JSON-backed local store files behind the repository boundary
+  - current Phase 4 backend keeps a lightweight legacy JSON adapter for tests/migration, while MVP semantic retrieval uses `Qdrant` behind the same repository boundary
 
 - `src/storage/migrations/`
   - contains local schema evolution helpers if the project needs them
@@ -270,7 +270,11 @@ For MVP setup, the runtime should load a single user-editable file named `media-
   "storage": {
     "root_dir": ".data",
     "catalog_db_path": ".data/catalog-store.json",
-    "vector_db_path": ".data/vector-store.json"
+    "vector_backend": "qdrant",
+    "vector_service_url": "http://127.0.0.1:6333",
+    "vector_collection_name": "media-index",
+    "vector_distance": "cosine",
+    "vector_timeout_ms": 10000
   },
   "scanner": {
     "include_images": true,
@@ -315,7 +319,7 @@ For MVP setup, the runtime should load a single user-editable file named `media-
   - must not contain storage or Photos framework internals
 
 - `storage`
-  - owns local writable paths for catalog and vector state
+  - owns the local catalog path plus vector backend connection settings
   - paths remain local and lightweight; no preview cache paths belong here
 
 - `scanner`
@@ -539,11 +543,11 @@ This keeps storage tiny and avoids duplicating the source Photos library, includ
 For the current end of Phase 3, the runtime now includes:
 
 1. an `index` command that defaults to a local cache read from the catalog/vector repositories when cache data exists
-2. a `reindex` command that forces `scan -> extract -> normalize -> persist` using the existing Photos bridge plus JSON-backed repositories
+2. a `reindex` command that forces `scan -> extract -> normalize -> persist` using the existing Photos bridge plus the JSON catalog plus `Qdrant` vector backend
 
-Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors, including batched image-thumbnail and video-poster-frame indexing without temporary files, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
+Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors into `Qdrant`, including batched image-thumbnail and video-poster-frame indexing without temporary files, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
 
-The current Phase 4 read path now also includes local semantic search over the JSON-backed vector store: Node normalizes the query text, asks the embedding provider for a text vector under the same model identity used during indexing, then ranks active image/video embeddings locally before handing results to later album-write steps.
+The current Phase 4 read path now also includes semantic search through the configured vector backend: Node normalizes the query text, asks the embedding provider for a text vector under the same model identity used during indexing, then queries `Qdrant` for active image/video embeddings before handing results to later album-write steps.
 
 The current CLI milestone wraps that retrieval path in a dedicated `search` command: the command loads config plus local stores, runs semantic ranking, then immediately hands the ranked results to the album write-back flow so search review remains native to Photos.
 

@@ -31,6 +31,176 @@ async function withTempDir(callback) {
   }
 }
 
+function createJsonResponse(status, payload) {
+  return {
+    status,
+    async json() {
+      return payload;
+    },
+  };
+}
+
+function matchesMustCondition(point, condition) {
+  if (!condition?.key) {
+    return true;
+  }
+
+  return point.payload?.[condition.key] === condition?.match?.value;
+}
+
+function matchesFilter(point, filter) {
+  if (!filter?.must?.length) {
+    return true;
+  }
+
+  return filter.must.every((condition) => matchesMustCondition(point, condition));
+}
+
+function cosineSimilarity(left = [], right = []) {
+  let dot = 0;
+  let leftMagnitude = 0;
+  let rightMagnitude = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    dot += left[index] * right[index];
+    leftMagnitude += left[index] * left[index];
+    rightMagnitude += right[index] * right[index];
+  }
+
+  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
+}
+
+function createMockQdrantFetch() {
+  const state = {
+    collection: null,
+    points: new Map(),
+    calls: [],
+  };
+
+  async function fetchFn(url, options = {}) {
+    const parsedUrl = new URL(url);
+    const method = options.method ?? "GET";
+    const pathname = parsedUrl.pathname;
+    const body = options.body ? JSON.parse(options.body) : null;
+    state.calls.push({ method, pathname, body });
+
+    if (method === "GET" && pathname === "/collections") {
+      return createJsonResponse(200, {
+        status: "ok",
+        result: {
+          collections: state.collection ? [{ name: state.collection.name }] : [],
+        },
+      });
+    }
+
+    if (pathname === "/collections/media-index" && method === "GET") {
+      if (!state.collection) {
+        return createJsonResponse(404, {
+          status: "error",
+          result: null,
+        });
+      }
+
+      return createJsonResponse(200, {
+        status: "ok",
+        result: {
+          config: {
+            params: {
+              vectors: {
+                size: state.collection.size,
+                distance: state.collection.distance,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    if (pathname === "/collections/media-index" && method === "PUT") {
+      state.collection = {
+        name: "media-index",
+        size: body.vectors.size,
+        distance: body.vectors.distance,
+      };
+      return createJsonResponse(200, {
+        status: "ok",
+        result: true,
+      });
+    }
+
+    if (pathname === "/collections/media-index/points" && method === "PUT") {
+      for (const point of body.points ?? []) {
+        state.points.set(point.id, structuredClone(point));
+      }
+
+      return createJsonResponse(200, {
+        status: "ok",
+        result: {
+          operation_id: 1,
+          status: "acknowledged",
+        },
+      });
+    }
+
+    if (pathname === "/collections/media-index/points/scroll" && method === "POST") {
+      const filteredPoints = Array.from(state.points.values())
+        .filter((point) => matchesFilter(point, body?.filter))
+        .map((point) => ({
+          id: point.id,
+          payload: structuredClone(point.payload),
+          vector: body?.with_vector ? structuredClone(point.vector) : undefined,
+        }));
+
+      return createJsonResponse(200, {
+        status: "ok",
+        result: {
+          points: filteredPoints,
+          next_page_offset: null,
+        },
+      });
+    }
+
+    if (pathname === "/collections/media-index/points/count" && method === "POST") {
+      const count = Array.from(state.points.values()).filter((point) =>
+        matchesFilter(point, body?.filter)
+      ).length;
+
+      return createJsonResponse(200, {
+        status: "ok",
+        result: {
+          count,
+        },
+      });
+    }
+
+    if (pathname === "/collections/media-index/points/query" && method === "POST") {
+      const hits = Array.from(state.points.values())
+        .filter((point) => matchesFilter(point, body?.filter))
+        .map((point) => ({
+          id: point.id,
+          payload: structuredClone(point.payload),
+          score: cosineSimilarity(body.query, point.vector),
+        }))
+        .sort((left, right) => right.score - left.score)
+        .slice(0, body.limit ?? 10);
+
+      return createJsonResponse(200, {
+        status: "ok",
+        result: {
+          points: hits,
+        },
+      });
+    }
+
+    throw new Error(`Unhandled mock Qdrant request: ${method} ${pathname}`);
+  }
+
+  return {
+    fetchFn,
+    state,
+  };
+}
+
 test("asset record builder creates deterministic ids and source fingerprint", async () => {
   const record = buildAssetRecord({
     local_identifier: "A1B2C3/L0/001",
@@ -118,13 +288,76 @@ test("vector repository returns stale embedding as active fallback when ready ve
   });
 });
 
-test("init scaffold writes real storage files instead of placeholders", async () => {
+test("qdrant vector repository upserts without duplicates and keeps stale embedding searchable", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+
+  const initialized = await repository.initialize();
+  assert.equal(initialized.reachable, true);
+  assert.equal(initialized.collection_exists, false);
+
+  const embedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-1",
+    local_identifier: "QDRANT/001",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: "open-clip:ViT-B-32:laion2b_s34b_b79k",
+    source_fingerprint: "fp:qdrant-1",
+    indexed_at: "2026-06-18T09:00:00.000Z",
+  });
+
+  await repository.upsertEmbedding({
+    record: embedding,
+    vector: [0.9, 0.1, 0],
+  });
+  await repository.upsertEmbedding({
+    record: {
+      ...embedding,
+      indexed_at: "2026-06-18T09:05:00.000Z",
+    },
+    vector: [0.9, 0.1, 0],
+  });
+
+  assert.equal(await repository.countEmbeddings(), 1);
+
+  await repository.markEmbeddingStatus(
+    embedding.embedding_id,
+    "stale",
+    "2026-06-18T09:10:00.000Z"
+  );
+
+  const active = await repository.getActiveEmbedding({
+    asset_id: embedding.asset_id,
+    representation_kind: "image-thumbnail",
+    embedding_model: "ViT-B-32",
+  });
+  const searchHits = await repository.searchByVector({
+    vector: [1, 0, 0],
+    embedding_model: "ViT-B-32",
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+
+  assert.equal(active.status, "stale");
+  assert.equal(searchHits.length, 1);
+  assert.equal(searchHits[0].embedding.embedding_id, embedding.embedding_id);
+});
+
+test("init scaffold writes config and catalog storage while reporting qdrant backend info", async () => {
   await withTempDir(async (tempDir) => {
     const result = await initializeProjectScaffold(tempDir, { force: true });
 
     assert.equal(result.created, true);
     assert.match(result.catalogDbPath, /catalog-store\.json$/);
-    assert.match(result.vectorDbPath, /vector-store\.json$/);
+    assert.equal(result.vectorBackend, "qdrant");
+    assert.equal(result.vectorServiceUrl, "http://127.0.0.1:6333");
   });
 });
 
@@ -143,7 +376,9 @@ test("storage layout stays in sync across default config, sample config, and ini
     const expectedLines = formatStorageSummaryLines({
       storageRoot: path.resolve(tempDir, STORAGE_LAYOUT.root_dir),
       catalogDbPath: path.resolve(tempDir, STORAGE_LAYOUT.catalog_db_path),
-      vectorDbPath: path.resolve(tempDir, STORAGE_LAYOUT.vector_db_path),
+      vectorBackend: STORAGE_LAYOUT.vector_backend,
+      vectorServiceUrl: STORAGE_LAYOUT.vector_service_url,
+      vectorCollectionName: STORAGE_LAYOUT.vector_collection_name,
     });
 
     for (const line of expectedLines) {
@@ -895,7 +1130,9 @@ test("search command orchestrates semantic retrieval and album write-back with d
     createStorageRepositoriesFn: () => ({
       storageRoot: "/tmp/mvi/.data",
       catalogDbPath: "/tmp/mvi/.data/catalog-store.json",
-      vectorDbPath: "/tmp/mvi/.data/vector-store.json",
+      vectorBackend: "qdrant",
+      vectorServiceUrl: "http://127.0.0.1:6333",
+      vectorCollectionName: "media-index",
       catalogRepository: {
         async initialize() {},
       },

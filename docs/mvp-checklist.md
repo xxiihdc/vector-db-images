@@ -27,6 +27,8 @@ Quy ước:
 - [x] Thiết kế folder layout cho các layer `scanner`, `extractor`, `enrichment`, `indexer`, `retriever`
 - [x] Chốt boundary nội bộ: `scanner` dừng ở asset discovery, `extractor` mới bắt đầu lấy representation bytes
 - [x] Chốt tách `retriever/query` khỏi `retriever/album` để read path và write-back path không dính nhau
+- [x] Chốt backend semantic retrieval đầu tiên cho MVP: vector DB chuyên dụng hoặc SQLite-based vector store
+- [x] Chốt search engine đầu tiên chạy semantic retrieval qua vector index thay vì chỉ rank trong JSON local store
 - [x] Thiết kế cấu trúc config file
 - [x] Chốt config surface đầu tiên là một file `media-vector-index.config.json`
 - [x] Chốt các section config nền: `app`, `storage`, `scanner`, `extractor`, `indexer`, `retriever`, `embedding`, `debug`
@@ -94,6 +96,12 @@ Quy ước:
   - [x] Khi thiếu runtime cho embedding provider, output phải nói rõ thiếu gì, command cài thư viện nếu có, và nhắc rằng pretrained model có thể auto-download ở lần chạy đầu
 - [x] Implement vector indexing path cho ảnh và video không tạo file tạm
 - [x] Implement local semantic search cho asset image và video
+- [x] Thay local JSON vector store prototype bằng backend semantic retrieval phù hợp cho MVP
+  - [x] Evaluate và chốt 1 hướng giữa vector DB chuyên dụng với SQLite-based vector search theo tiêu chí local-first trên Apple Silicon
+  - [x] Implement repository backend mới cho vector persistence và ANN/vector lookup
+  - [x] Wire `index` để persist embeddings vào vector DB đã chốt thay vì chỉ JSON vector payload store
+  - [x] Wire `search` để truy vấn semantic qua search engine/vector index backend thay vì cosine ranking thuần trong app layer
+  - [ ] Verify semantic retrieval quality và latency trên library thật sau khi chuyển backend
 - [x] Implement tạo hoặc tìm lại album `AI Search Results` trong Apple Photos
 - [x] Implement album output flow cho `AI Search Results`
 - [x] Implement ghi asset match trở lại album trong Photos app

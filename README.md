@@ -69,6 +69,7 @@ node ./src/cli/main.js index
 node ./src/cli/main.js index --no-cache
 node ./src/cli/main.js reindex
 node ./src/cli/main.js search "sunset beach"
+node ./src/cli/main.js storage vector-check
 node ./src/cli/main.js photos check
 node ./src/cli/main.js photos request-access
 node ./src/cli/main.js photos scan
@@ -81,7 +82,7 @@ node ./src/cli/main.js embedding capabilities
 
 Ghi chú:
 
-- `init` tạo `media-vector-index.config.json` và hai JSON-backed local store versioned trong `.data/`
+- `init` tạo `media-vector-index.config.json`, bootstrap catalog store local trong `.data/`, và report trạng thái reachability của `Qdrant`
 - `photos check` và `photos debug` hiện chạy native runtime probe qua Python bridge để kiểm tra `PyObjC`, `Photos.framework`, và trạng thái quyền hiện tại
 - `photos request-access` chủ động gọi native Photos authorization request để kích hoạt popup TCC khi trạng thái đang là `not_determined`
 - `photos scan` hiện enumerate asset thật từ Photos framework sau khi quyền đã được cấp và trả về normalized asset candidates
@@ -89,12 +90,24 @@ Ghi chú:
 - `embedding capabilities` là preflight probe cho `open-clip`; khi thiếu runtime, output sẽ nói rõ thiếu thư viện nào và đưa luôn command cài nếu đó là Python library
 - `photos probe-originals` dùng Photos-managed resource request với `networkAccessAllowed` để thử chạm asset gốc cho cả asset local và iCloud-backed mà không export file ra workspace
 - `photos extract` lấy batch 10 asset gần nhất theo mặc định, tạo thumbnail ảnh `224x224` và video poster frame hoàn toàn in-memory để verify extractor path mà không cần chạy full scan output
-- `index` mặc định ưu tiên dùng cache từ local catalog/vector stores nếu đã có dữ liệu, để tránh rescan Photos lặp lại; thêm `--no-cache` khi cần ép refresh cache từ Photos
-- khi `index --no-cache` chạy refresh thật, flow nối scan + extraction + normalize + persist vào JSON-backed local stores rồi gọi embedding provider abstraction để batch semantic vector cho cả image thumbnail và video poster frame hoàn toàn in-memory
-- local semantic search core hiện đã có service riêng để normalize query, embed text query bằng cùng model identity, rồi rank cả image thumbnail và video poster frame từ local vector store
+- `index` mặc định ưu tiên dùng cache từ local catalog/vector state nếu đã có dữ liệu, để tránh rescan Photos lặp lại; thêm `--no-cache` khi cần ép refresh cache từ Photos
+- khi `index --no-cache` chạy refresh thật, flow nối scan + extraction + normalize + persist vào local catalog + `Qdrant`, rồi gọi embedding provider abstraction để batch semantic vector cho cả image thumbnail và video poster frame hoàn toàn in-memory
+- local semantic search core hiện normalize query, embed text query bằng cùng model identity, rồi query semantic trực tiếp qua `Qdrant` thay vì cosine ranking thuần trong app layer
 - runtime hiện đã có album service và Python bridge command để tạo hoặc tìm lại album `AI Search Results`, rồi resolve ordered `local_identifier` list thành native `PHAsset` write-back ngay trong Photos bridge
 - album output flow hiện normalize retrieval results thành ordered unique `local_identifier` write-set, giữ `album_write_mode`, gọi native album mutation qua stdin payload, và trả về `applied_asset_count` cùng `unresolved_results` cho debug
-- `search "..."` giờ đã nối local semantic retrieval với album write-back: command sẽ load local stores, rank embeddings, update album `AI Search Results`, và in ra debug lines gồm query, counts, top match, cùng unresolved write-back rows nếu có
+- `search "..."` giờ đã nối local semantic retrieval với album write-back: command sẽ load local catalog + vector backend config, query semantic matches từ `Qdrant`, update album `AI Search Results`, và in ra debug lines gồm query, counts, top match, cùng unresolved write-back rows nếu có
+- `storage vector-check` là preflight command để tách lỗi reachability của `Qdrant` khỏi lỗi embedding/search logic
+
+### Qdrant local sidecar
+
+Semantic retrieval MVP hiện mặc định dùng `Qdrant` local tại `http://127.0.0.1:6333`.
+
+Docker quickstart:
+
+```bash
+docker run -p 6333:6333 -v "$(pwd)/.data/qdrant:/qdrant/storage" qdrant/qdrant
+node ./src/cli/main.js storage vector-check
+```
 - `reindex` là command riêng cho forced refresh; nó luôn bypass cache và chạy lại refresh path nhưng vẫn giữ deterministic upsert để rerun không tạo duplicate asset hay embedding row
 - khi CLI gặp lỗi, diagnostic log JSON sẽ được ghi vào `logs/` để giữ lại stacktrace và context điều tra
 - provider mặc định hiện là `open-clip`; model pretrained sẽ được OpenCLIP tự download ở lần chạy đầu tiên nếu máy có internet và local cache chưa có

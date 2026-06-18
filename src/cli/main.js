@@ -15,6 +15,7 @@ import { runEmbeddingCapabilitiesCommand } from "./commands/embedding-capabiliti
 import { runIndexCommand } from "./commands/index.js";
 import { runReindexCommand } from "./commands/reindex.js";
 import { runSearchCommand } from "./commands/search.js";
+import { runStorageVectorCheckCommand } from "./commands/storage-vector-check.js";
 import {
   AppError,
   toDiagnosticErrorPayload,
@@ -44,6 +45,10 @@ async function dispatch(argv) {
 
   if (command === "search") {
     return runSearchCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
+  }
+
+  if (command === "storage" && subcommand === "vector-check") {
+    return runStorageVectorCheckCommand({ cwd, args: rest });
   }
 
   if (command === "photos" && subcommand === "check") {

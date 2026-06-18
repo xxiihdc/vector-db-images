@@ -3,45 +3,12 @@ import { normalizeQuery } from "../../enrichment/normalizers/query-normalizer.js
 import { createRetrievalResult } from "../contracts/retrieval-result.js";
 import { AppError } from "../../shared/errors/app-error.js";
 
-function cosineSimilarity(left = [], right = []) {
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length === 0 || right.length === 0) {
-    return null;
-  }
-
-  if (left.length !== right.length) {
-    return null;
-  }
-
-  let dot = 0;
-  let leftMagnitude = 0;
-  let rightMagnitude = 0;
-
-  for (let index = 0; index < left.length; index += 1) {
-    const leftValue = Number(left[index]);
-    const rightValue = Number(right[index]);
-
-    if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue)) {
-      return null;
-    }
-
-    dot += leftValue * rightValue;
-    leftMagnitude += leftValue * leftValue;
-    rightMagnitude += rightValue * rightValue;
-  }
-
-  if (leftMagnitude === 0 || rightMagnitude === 0) {
-    return null;
-  }
-
-  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
-}
-
 function buildMatchNotes({ representationKind, assetType, score }) {
   return [
     "top similarity match",
     `${representationKind} representation`,
     `${assetType} asset`,
-    `cosine score ${score.toFixed(4)}`,
+    `backend score ${score.toFixed(4)}`,
   ];
 }
 
@@ -77,12 +44,21 @@ export function createSearchService({
     const queryEmbedding = await embeddingProvider.embedQuery({
       text: normalizedQuery,
     });
-    const activeEmbeddings = await vectorRepository.listActiveEmbeddings({
-      embedding_model: queryEmbedding.embedding_model,
-      representation_kinds: representationKinds,
-    });
+    const [searchedEmbeddingCount, searchHits] = await Promise.all([
+      vectorRepository.countEmbeddings({
+        embedding_model: queryEmbedding.embedding_model,
+        representation_kinds: representationKinds,
+        statuses: ["ready", "stale"],
+      }),
+      vectorRepository.searchByVector({
+        vector: queryEmbedding.vector,
+        embedding_model: queryEmbedding.embedding_model,
+        representation_kinds: representationKinds,
+        limit: searchLimit,
+      }),
+    ]);
 
-    if (activeEmbeddings.length === 0) {
+    if (searchHits.length === 0) {
       return {
         implemented: true,
         phase: "search-and-retrieval",
@@ -90,7 +66,7 @@ export function createSearchService({
         query_text: normalizedQuery,
         result_count: 0,
         results: [],
-        searched_embedding_count: 0,
+        searched_embedding_count: searchedEmbeddingCount,
         notes: [
           "Local semantic search found no active embeddings for the configured model.",
         ],
@@ -98,26 +74,17 @@ export function createSearchService({
     }
 
     const candidates = [];
-    for (const embedding of activeEmbeddings) {
-      const [asset, vectorEntry] = await Promise.all([
-        catalogRepository.getAssetByAssetId(embedding.asset_id),
-        vectorRepository.getVector(embedding.vector_ref),
-      ]);
+    for (const hit of searchHits) {
+      const asset = await catalogRepository.getAssetByAssetId(hit.embedding.asset_id);
 
-      if (!asset || !vectorEntry?.values?.length) {
-        continue;
-      }
-
-      const score = cosineSimilarity(queryEmbedding.vector, vectorEntry.values);
-
-      if (score === null) {
+      if (!asset) {
         continue;
       }
 
       candidates.push({
         asset,
-        embedding,
-        score,
+        embedding: hit.embedding,
+        score: hit.score,
       });
     }
 
@@ -158,9 +125,9 @@ export function createSearchService({
       query_text: normalizedQuery,
       result_count: results.length,
       results,
-      searched_embedding_count: activeEmbeddings.length,
+      searched_embedding_count: searchedEmbeddingCount,
       notes: [
-        `Semantic search ranked local image/video embeddings via ${queryEmbedding.model_identity}.`,
+        `Semantic search queried the configured vector backend via ${queryEmbedding.model_identity}.`,
       ],
     };
   }

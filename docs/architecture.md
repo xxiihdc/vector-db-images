@@ -16,7 +16,7 @@ Treat Apple Photos on macOS as the system of record for source images and videos
    - requests `224x224` thumbnails or lightweight video representations from Photos APIs
    - keeps all extracted representations in-memory only
    - extracts minimal technical metadata when needed for indexing
-   - current MVP debug path uses image thumbnails plus video poster frames from the most recent 10 assets by default
+   - current MVP debug path uses image thumbnails plus multi-frame video storyboards from the most recent 10 assets by default
 
 3. `enrichment`
    - prepares optional text hints or metadata-derived context later
@@ -193,7 +193,7 @@ src/
 
 - `src/extractor/video/`
   - contains lightweight video representation request logic
-  - current Phase 3 target is an in-memory poster frame derived from a Photos-managed AVAsset path
+  - current Phase 3 target is a lightweight in-memory video-derived representation, now defaulting to a multi-frame storyboard derived from a Photos-managed AVAsset path
   - stays focused on RAM-only access paths for retrieval inputs
 
 - `src/enrichment/contracts/`
@@ -312,7 +312,7 @@ For MVP setup, the runtime should load a single user-editable file named `media-
   },
   "extractor": {
     "image_thumbnail_size": 224,
-    "video_strategy": "poster-frame",
+    "video_strategy": "storyboard",
     "allow_network_access": true
   },
   "indexer": {
@@ -519,7 +519,7 @@ The embedding catalog should keep one row per indexed representation and stay po
   - must match the parent asset record
 
 - `representation_kind`
-  - enum baseline: `image-thumbnail` | `video-poster-frame` | `video-clip-summary`
+  - enum baseline: `image-thumbnail` | `video-storyboard` | `video-poster-frame` | `video-clip-summary`
   - starts simple so video strategy can evolve without schema churn
 
 - `embedding_provider`
@@ -576,7 +576,7 @@ For the current end of Phase 3, the runtime now includes:
 1. an `index` command that defaults to a local cache read from the catalog/vector repositories when cache data exists
 2. a `reindex` command that forces `scan -> extract -> normalize -> persist` using the existing Photos bridge plus the JSON catalog plus `Qdrant` vector backend
 
-Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors into `Qdrant`, including batched image-thumbnail and video-poster-frame indexing without temporary files, so storage shape and re-index identity behavior stay stable while the inference runtime remains swappable.
+Passing `--no-cache` on `index` uses the same forced refresh path as `reindex`. The Phase 4 baseline now routes in-memory representations through the embedding provider abstraction before persisting vectors into `Qdrant`, including batched image-thumbnail and video-storyboard indexing without temporary files, while search and cache reads still accept legacy `video-poster-frame` rows so storage shape and re-index identity behavior stay stable during rollout.
 
 The current Phase 4 read path now also includes semantic search through the configured vector backend: Node normalizes the query text, asks the embedding provider for a text vector under the same model identity used during indexing, then queries `Qdrant` for active image/video embeddings before handing results to later album-write steps.
 
@@ -703,9 +703,10 @@ The extraction path must remain RAM-only for both image thumbnails and video rep
 ### Video Representation Strategy
 
 1. The Python bridge requests a lightweight video-derived representation through Photos-managed APIs.
-2. The first baseline representation kind is `video-poster-frame`.
-3. If the representation is generated from AV/Photos APIs, it must still remain in-memory and temporary.
-4. Node receives only the representation payload required for embedding plus minimal metadata.
+2. The first baseline representation kind is `video-storyboard`, built from multiple in-memory frames from the same Photos-managed AVAsset path.
+3. `video-poster-frame` remains a supported legacy representation kind for already-indexed data and debug fallback.
+4. If the representation is generated from AV/Photos APIs, it must still remain in-memory and temporary.
+5. Node receives only the representation payload required for embedding plus minimal metadata.
 
 ### RAM-Only Rules
 

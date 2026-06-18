@@ -90,7 +90,9 @@ At this stage, the index pipeline is wired through a real embedding provider abs
 
 The working debug flow should start with a lightweight capability probe so dependency or runtime mismatches are separated from extraction logic failures early.
 
-For long-running full-library indexing, the Photos bridge should not behave like a black box: native extraction progress is expected to stream live to the terminal so the user can tell whether the bottleneck is a specific asset, video poster-frame generation, or simple scale.
+For long-running full-library indexing, the Photos bridge should not behave like a black box: native extraction progress is expected to stream live to the terminal so the user can tell whether the bottleneck is a specific asset, video storyboard generation, or simple scale.
+
+For the current retrieval-quality pass, the default video representation should no longer collapse to a single poster frame. The baseline now prefers an in-memory multi-frame storyboard representation for video assets while remaining backward-compatible with existing `video-poster-frame` embeddings already stored locally.
 
 For the same workflow, the index command should also avoid requesting one monolithic extraction payload from the bridge; extraction must be chunked so large libraries do not fail purely on bridge transport size.
 

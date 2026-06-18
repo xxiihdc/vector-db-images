@@ -13,6 +13,16 @@ function buildMatchNotes({ representationKind, assetType, score }) {
   ];
 }
 
+function getDefaultRepresentationKinds(config) {
+  const configuredStrategy = String(config?.extractor?.video_strategy ?? "storyboard").trim();
+  const preferredVideoKind =
+    configuredStrategy === "poster-frame" ? "video-poster-frame" : "video-storyboard";
+  const fallbackVideoKind =
+    preferredVideoKind === "video-storyboard" ? "video-poster-frame" : "video-storyboard";
+
+  return ["image-thumbnail", preferredVideoKind, fallbackVideoKind];
+}
+
 export function createSearchService({
   catalogRepository,
   vectorRepository,
@@ -30,7 +40,7 @@ export function createSearchService({
     modelIdentity,
     config,
     limit,
-    representationKinds = ["image-thumbnail", "video-poster-frame"],
+    representationKinds = getDefaultRepresentationKinds(config),
     matchStrategy = "semantic-vector",
     queryText = null,
     queryNotes = [],
@@ -133,7 +143,7 @@ export function createSearchService({
     query,
     config,
     limit,
-    representationKinds = ["image-thumbnail", "video-poster-frame"],
+    representationKinds = getDefaultRepresentationKinds(config),
   } = {}) {
     const normalizedQuery = normalizeQuery(query);
 
@@ -165,7 +175,7 @@ export function createSearchService({
     imagePath,
     config,
     limit,
-    representationKinds = ["image-thumbnail", "video-poster-frame"],
+    representationKinds = getDefaultRepresentationKinds(config),
   } = {}) {
     const imageFile = await readLocalImageFile(imagePath);
     const embeddingProvider = createEmbeddingProviderFn({ config });

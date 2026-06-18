@@ -20,7 +20,7 @@
   },
   "extractor": {
     "image_thumbnail_size": 224,
-    "video_strategy": "poster-frame",
+    "video_strategy": "storyboard",
     "allow_network_access": true
   },
   "indexer": {
@@ -30,7 +30,7 @@
   "retriever": {
     "default_limit": 50,
     "album_write_mode": "replace",
-    "write_to_photos_results_album": false
+    "write_to_photos_results_album": true
   },
   "embedding": {
     "provider": "open-clip",

@@ -46,6 +46,7 @@ export async function extractPhotosRepresentations({
   limit = 10,
   offset = 0,
   thumbnailSize = 224,
+  videoStrategy = "storyboard",
   timeoutSeconds = 30,
 } = {}) {
   return runPythonPhotosBridge(PHOTOS_COMMANDS.EXTRACT_REPRESENTATIONS, {
@@ -58,6 +59,8 @@ export async function extractPhotosRepresentations({
       String(offset),
       "--thumbnail-size",
       String(thumbnailSize),
+      "--video-strategy",
+      String(videoStrategy),
       "--extract-timeout-seconds",
       String(timeoutSeconds),
     ],

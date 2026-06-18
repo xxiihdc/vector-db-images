@@ -40,6 +40,16 @@ function buildExtractionSignature({
   return `unknown:${thumbnailSize}`;
 }
 
+function getPreferredVideoRepresentationKinds(config) {
+  const configuredStrategy = String(config?.extractor?.video_strategy ?? "storyboard").trim();
+  const preferredKind =
+    configuredStrategy === "poster-frame" ? "video-poster-frame" : "video-storyboard";
+  const fallbackKind =
+    preferredKind === "video-storyboard" ? "video-poster-frame" : "video-storyboard";
+
+  return [preferredKind, fallbackKind];
+}
+
 function createEmptyVectorIndexState() {
   return {
     implemented: true,
@@ -223,13 +233,23 @@ async function buildCachedIndexState({
   let skippedAssetCount = 0;
 
   for (const asset of limitedAssets) {
-    const representationKind =
-      asset.asset_type === "video" ? "video-poster-frame" : "image-thumbnail";
-    const activeEmbedding = await vectorRepository.getActiveEmbedding({
-      asset_id: asset.asset_id,
-      representation_kind: representationKind,
-      embedding_model: config.embedding?.model ?? "phase3-placeholder",
-    });
+    const representationKinds =
+      asset.asset_type === "video"
+        ? getPreferredVideoRepresentationKinds(config)
+        : ["image-thumbnail"];
+    let activeEmbedding = null;
+
+    for (const representationKind of representationKinds) {
+      activeEmbedding = await vectorRepository.getActiveEmbedding({
+        asset_id: asset.asset_id,
+        representation_kind: representationKind,
+        embedding_model: config.embedding?.model ?? "phase3-placeholder",
+      });
+
+      if (activeEmbedding) {
+        break;
+      }
+    }
 
     if (!activeEmbedding) {
       skippedAssetCount += 1;
@@ -420,6 +440,7 @@ export function createIndexPipeline({
             limit: chunkLimit,
             offset: extractionOffset,
             thumbnailSize: config.extractor?.image_thumbnail_size ?? 224,
+            videoStrategy: config.extractor?.video_strategy ?? "storyboard",
             timeoutSeconds,
           })
         );
@@ -721,7 +742,7 @@ export function createIndexPipeline({
       slowest_stage: slowestStage,
       notes: [
         `Index persisted semantic vectors via ${embeddingProvider.modelIdentity}.`,
-        "Embedding generation batches in-memory image thumbnails and video poster frames without writing temp files.",
+        "Embedding generation batches in-memory image thumbnails and lightweight video-derived representations without writing temp files.",
         "Index now checkpoints progress chunk-by-chunk so completed chunks stay persisted if a later chunk fails.",
       ],
     };

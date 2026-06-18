@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   },
   extractor: {
     image_thumbnail_size: 224,
-    video_strategy: "poster-frame",
+    video_strategy: "storyboard",
     allow_network_access: true,
   },
   indexer: {

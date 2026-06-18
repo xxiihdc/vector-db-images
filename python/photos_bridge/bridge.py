@@ -21,6 +21,8 @@ DEFAULT_THUMBNAIL_SIZE = 224
 DEFAULT_EXTRACT_TIMEOUT_SECONDS = 30
 DEFAULT_EXTRACT_PROGRESS_EVERY = 25
 DEFAULT_EXTRACT_OFFSET = 0
+DEFAULT_VIDEO_STRATEGY = "storyboard"
+DEFAULT_VIDEO_STORYBOARD_FRAME_COUNT = 4
 
 
 def emit_progress(message: str) -> None:
@@ -541,6 +543,7 @@ def downsample_image_data_to_jpeg_bytes(
         NSCompositingOperationCopy,
         NSGraphicsContext,
         NSImage,
+        NSRectFill,
     )
 
     image = NSImage.alloc().initWithData_(image_data)
@@ -760,6 +763,99 @@ def choose_video_frame_time_seconds(asset: object) -> float:
     return min(duration_value / 2.0, 3.0)
 
 
+def choose_video_storyboard_frame_times(asset: object, frame_count: int) -> List[float]:
+    duration_seconds = read_native_member(asset, "duration")
+    if duration_seconds is None:
+        return [0.0]
+
+    duration_value = float(duration_seconds)
+    if duration_value <= 0:
+        return [0.0]
+
+    normalized_frame_count = max(1, int(frame_count))
+    if normalized_frame_count == 1:
+        return [choose_video_frame_time_seconds(asset)]
+
+    lead_in = min(duration_value * 0.15, 1.0)
+    lead_out = min(duration_value * 0.15, 1.0)
+    start_time = min(lead_in, max(0.0, duration_value / 2.0))
+    end_time = max(start_time, duration_value - lead_out)
+    step = 0.0 if normalized_frame_count == 1 else (end_time - start_time) / (
+        normalized_frame_count - 1
+    )
+
+    return [
+        max(0.0, min(duration_value, start_time + (step * index)))
+        for index in range(normalized_frame_count)
+    ]
+
+
+def compose_storyboard_jpeg_bytes(
+    cg_images: List[object], tile_size: int
+) -> Tuple[bytes, int, int]:
+    from AppKit import (  # type: ignore
+        NSBitmapImageFileTypeJPEG,
+        NSBitmapImageRep,
+        NSColor,
+        NSCompositingOperationCopy,
+        NSGraphicsContext,
+        NSImage,
+    )
+
+    normalized_images = [image for image in cg_images if image is not None]
+    if not normalized_images:
+        return b"", 0, 0
+
+    if len(normalized_images) == 1:
+        return encode_cgimage_to_jpeg_bytes(normalized_images[0])
+
+    column_count = 2 if len(normalized_images) > 1 else 1
+    row_count = (len(normalized_images) + column_count - 1) // column_count
+    canvas_width = int(tile_size * column_count)
+    canvas_height = int(tile_size * row_count)
+
+    bitmap = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bitmapFormat_bytesPerRow_bitsPerPixel_(
+        None,
+        canvas_width,
+        canvas_height,
+        8,
+        4,
+        True,
+        False,
+        "NSCalibratedRGBColorSpace",
+        0,
+        0,
+        0,
+    )
+    if bitmap is None:
+        return b"", 0, 0
+
+    context = NSGraphicsContext.graphicsContextWithBitmapImageRep_(bitmap)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.setCurrentContext_(context)
+    NSColor.blackColor().set()
+    NSRectFill(((0, 0), (float(canvas_width), float(canvas_height))))
+
+    for index, cg_image in enumerate(normalized_images):
+        ns_image = NSImage.alloc().initWithCGImage_size_(cg_image, (0, 0))
+        column_index = index % column_count
+        row_index = index // column_count
+        origin_x = float(column_index * tile_size)
+        origin_y = float(canvas_height - ((row_index + 1) * tile_size))
+        ns_image.drawInRect_fromRect_operation_fraction_(
+            ((origin_x, origin_y), (float(tile_size), float(tile_size))),
+            ((0, 0), ns_image.size()),
+            NSCompositingOperationCopy,
+            1.0,
+        )
+
+    NSGraphicsContext.restoreGraphicsState()
+    jpeg_data = bitmap.representationUsingType_properties_(
+        NSBitmapImageFileTypeJPEG, {}
+    )
+    return nsdata_to_bytes(jpeg_data), canvas_width, canvas_height
+
+
 def extract_video_poster_frame_representation(
     asset: object,
     normalized_asset: dict,
@@ -869,6 +965,140 @@ def extract_video_poster_frame_representation(
     )
 
 
+def extract_video_storyboard_representation(
+    asset: object,
+    normalized_asset: dict,
+    modules: Dict[str, object],
+    thumbnail_size: int,
+    allow_network_access: bool,
+    timeout_seconds: int,
+) -> dict:
+    PHImageManager = modules["PHImageManager"]
+    PHVideoRequestOptions = modules["PHVideoRequestOptions"]
+
+    manager = PHImageManager.defaultManager()
+    options = PHVideoRequestOptions.alloc().init()
+    options.setNetworkAccessAllowed_(bool(allow_network_access))
+
+    completion_event = threading.Event()
+    frame_times = choose_video_storyboard_frame_times(
+        asset, DEFAULT_VIDEO_STORYBOARD_FRAME_COUNT
+    )
+    state = {
+        "status": "pending",
+        "byte_length": 0,
+        "bytes_base64": None,
+        "sha256": None,
+        "mime_type": "image/jpeg",
+        "pixel_width": None,
+        "pixel_height": None,
+        "error": None,
+        "timed_out": False,
+        "source_mode": "avasset-storyboard",
+        "frame_times_seconds": frame_times,
+        "frame_count": len(frame_times),
+    }
+
+    def result_handler(av_asset: object, audio_mix: object, info: object) -> None:
+        del audio_mix
+        if av_asset is None:
+            state["status"] = "missing-avasset"
+            state["error"] = str(
+                info_value(info, "PHImageErrorKey")
+                or "No AVAsset returned for video storyboard extraction."
+            )
+            completion_event.set()
+            return
+
+        try:
+            from AVFoundation import AVAssetImageGenerator  # type: ignore
+            from CoreMedia import CMTimeMakeWithSeconds  # type: ignore
+
+            generator = AVAssetImageGenerator.alloc().initWithAsset_(av_asset)
+            generator.setAppliesPreferredTrackTransform_(True)
+            if hasattr(generator, "setMaximumSize_"):
+                generator.setMaximumSize_((thumbnail_size, thumbnail_size))
+
+            cg_images = []
+            extraction_errors = []
+
+            for frame_time_seconds in frame_times:
+                frame_time = CMTimeMakeWithSeconds(frame_time_seconds, 600)
+                image_result = generator.copyCGImageAtTime_actualTime_error_(
+                    frame_time, None, None
+                )
+
+                cg_image = None
+                error = None
+                if isinstance(image_result, tuple):
+                    cg_image = image_result[0] if len(image_result) > 0 else None
+                    error = image_result[-1] if len(image_result) > 2 else None
+                else:
+                    cg_image = image_result
+
+                if cg_image is None:
+                    extraction_errors.append(
+                        str(error or f"Missing CGImage at {frame_time_seconds:.3f}s")
+                    )
+                    continue
+
+                cg_images.append(cg_image)
+
+            if not cg_images:
+                state["status"] = "missing-frame"
+                state["error"] = (
+                    "; ".join(extraction_errors)
+                    if extraction_errors
+                    else "Video storyboard extraction returned no CGImage."
+                )
+            else:
+                (
+                    jpeg_bytes,
+                    pixel_width,
+                    pixel_height,
+                ) = compose_storyboard_jpeg_bytes(cg_images, thumbnail_size)
+                payload = encode_bytes_payload(jpeg_bytes)
+                state.update(payload)
+                state["pixel_width"] = pixel_width
+                state["pixel_height"] = pixel_height
+                state["status"] = "ok" if payload["byte_length"] > 0 else "empty"
+                if extraction_errors:
+                    state["error"] = "; ".join(extraction_errors)
+        except Exception as error:  # pragma: no cover - native bridge failure path
+            state["status"] = "error"
+            state["error"] = f"Failed to generate video storyboard in-memory: {error}"
+
+        completion_event.set()
+
+    manager.requestAVAssetForVideo_options_resultHandler_(asset, options, result_handler)
+
+    if not completion_event.wait(timeout=timeout_seconds):
+        state["status"] = "timeout"
+        state["timed_out"] = True
+        state["error"] = "Timed out while waiting for video storyboard extraction."
+
+    return create_representation_payload(
+        normalized_asset,
+        representation_kind="video-storyboard",
+        mime_type=state["mime_type"],
+        byte_length=state["byte_length"],
+        bytes_base64=state["bytes_base64"],
+        sha256=state["sha256"],
+        metadata={
+            "status": state["status"],
+            "pixel_width": state["pixel_width"],
+            "pixel_height": state["pixel_height"],
+            "thumbnail_size": int(thumbnail_size),
+            "network_access_allowed": bool(allow_network_access),
+            "timed_out": state["timed_out"],
+            "frame_times_seconds": state["frame_times_seconds"],
+            "frame_count": state["frame_count"],
+            "error": state["error"],
+            "source_mode": state["source_mode"],
+        },
+    )
+
+
 def create_representation_payload(
     normalized_asset: dict,
     representation_kind: str,
@@ -898,6 +1128,7 @@ def extract_recent_representations(
     extract_limit: int,
     extract_offset: int,
     thumbnail_size: int,
+    video_strategy: str,
     timeout_seconds: int,
 ) -> dict:
     if not modules:
@@ -943,7 +1174,7 @@ def extract_recent_representations(
     emit_progress(
         "[bridge] extraction starting: "
         f"available={available_asset_count}, offset={start_index}, limit={extract_limit}, target={target_asset_count}, "
-        f"thumbnail={thumbnail_size}, timeout={timeout_seconds}s, network={'on' if allow_network_access else 'off'}"
+        f"thumbnail={thumbnail_size}, video_strategy={video_strategy}, timeout={timeout_seconds}s, network={'on' if allow_network_access else 'off'}"
     )
 
     for relative_index in range(target_asset_count):
@@ -989,14 +1220,24 @@ def extract_recent_representations(
             )
             image_representation_count += 1
         elif normalized_asset["asset_type"] == "video":
-            representation = extract_video_poster_frame_representation(
-                asset,
-                normalized_asset,
-                modules,
-                thumbnail_size,
-                allow_network_access,
-                timeout_seconds,
-            )
+            if video_strategy == "storyboard":
+                representation = extract_video_storyboard_representation(
+                    asset,
+                    normalized_asset,
+                    modules,
+                    thumbnail_size,
+                    allow_network_access,
+                    timeout_seconds,
+                )
+            else:
+                representation = extract_video_poster_frame_representation(
+                    asset,
+                    normalized_asset,
+                    modules,
+                    thumbnail_size,
+                    allow_network_access,
+                    timeout_seconds,
+                )
             video_representation_count += 1
         else:
             continue
@@ -2004,6 +2245,7 @@ def handle_extract_representations(
     extract_limit: int,
     extract_offset: int,
     thumbnail_size: int,
+    video_strategy: str,
     timeout_seconds: int,
 ) -> dict:
     payload = build_base_payload("extract-representations")
@@ -2017,6 +2259,7 @@ def handle_extract_representations(
         extract_limit,
         extract_offset,
         thumbnail_size,
+        video_strategy,
         timeout_seconds,
     )
 
@@ -2030,6 +2273,7 @@ def handle_extract_representations(
             "extract_limit": int(extract_limit),
             "extract_offset": int(extract_offset),
             "thumbnail_size": int(thumbnail_size),
+            "video_strategy": video_strategy,
             "extract_timeout_seconds": int(timeout_seconds),
             "available_asset_count": extraction_state["available_asset_count"],
             "representation_count": extraction_state["representation_count"],
@@ -2042,7 +2286,7 @@ def handle_extract_representations(
             "notes": payload["notes"]
             + [
                 "Extraction samples the most recent Photos assets first and keeps the default debug batch at 10 assets.",
-                "Image thumbnails and video poster frames are encoded in-memory and returned without writing temp files to disk.",
+                "Image thumbnails and lightweight video-derived representations are encoded in-memory and returned without writing temp files to disk.",
             ],
         }
     )
@@ -2160,6 +2404,11 @@ def main() -> int:
     parser.add_argument("--extract-offset", type=int, default=DEFAULT_EXTRACT_OFFSET)
     parser.add_argument("--thumbnail-size", type=int, default=DEFAULT_THUMBNAIL_SIZE)
     parser.add_argument(
+        "--video-strategy",
+        choices=["poster-frame", "storyboard"],
+        default=DEFAULT_VIDEO_STRATEGY,
+    )
+    parser.add_argument(
         "--extract-timeout-seconds", type=int, default=DEFAULT_EXTRACT_TIMEOUT_SECONDS
     )
     parser.add_argument("--album-name", default="AI Search Results")
@@ -2184,6 +2433,7 @@ def main() -> int:
             extract_limit=max(1, args.extract_limit),
             extract_offset=max(0, args.extract_offset),
             thumbnail_size=max(1, args.thumbnail_size),
+            video_strategy=args.video_strategy,
             timeout_seconds=max(1, args.extract_timeout_seconds),
         ),
         "ensure-results-album": lambda: handle_ensure_results_album(args.album_name),

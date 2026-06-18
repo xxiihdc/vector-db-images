@@ -94,11 +94,11 @@ Ghi chú:
 - `photos capabilities` là preflight probe để kiểm tra nhanh native bridge đang có `Photos`, `AppKit`, `Quartz`, `AVFoundation`, cùng trạng thái permission/library access trước khi debug extraction
 - `embedding capabilities` là preflight probe cho `open-clip`; khi thiếu runtime, output sẽ nói rõ thiếu thư viện nào và đưa luôn command cài nếu đó là Python library
 - `photos probe-originals` dùng Photos-managed resource request với `networkAccessAllowed` để thử chạm asset gốc cho cả asset local và iCloud-backed mà không export file ra workspace
-- `photos extract` lấy batch 10 asset gần nhất theo mặc định, tạo thumbnail ảnh `224x224` và video poster frame hoàn toàn in-memory để verify extractor path mà không cần chạy full scan output
+- `photos extract` lấy batch 10 asset gần nhất theo mặc định, tạo thumbnail ảnh `224x224` và video storyboard nhiều frame hoàn toàn in-memory để verify extractor path mà không cần chạy full scan output
 - `photos extract` và `index --no-cache` giờ stream progress trực tiếp từ Python Photos bridge qua `stderr` với prefix `[photos-bridge:extract-representations]`, nên nếu extraction chậm hoặc kẹt ở một asset cụ thể thì terminal sẽ hiện asset đang xử lý thay vì đứng im như hộp đen
 - `index` mặc định ưu tiên dùng cache từ local catalog/vector state nếu đã có dữ liệu, để tránh rescan Photos lặp lại; thêm `--no-cache` khi cần ép refresh cache từ Photos
 - `index file <image-path>` là flow validation hẹp để index đúng 1 ảnh export/local bằng cùng embedding provider hiện tại; asset test này dùng synthetic `local_identifier` deterministic theo content hash của file
-- khi `index --no-cache` chạy refresh thật, flow nối scan + extraction + normalize + persist vào local catalog + `Qdrant`, rồi gọi embedding provider abstraction để batch semantic vector cho cả image thumbnail và video poster frame hoàn toàn in-memory
+- khi `index --no-cache` chạy refresh thật, flow nối scan + extraction + normalize + persist vào local catalog + `Qdrant`, rồi gọi embedding provider abstraction để batch semantic vector cho cả image thumbnail và video storyboard hoàn toàn in-memory
 - full-library extraction trong `index` hiện tự chia thành nhiều bridge batch nhỏ để tránh lỗi `PYTHON_BRIDGE_OUTPUT_TOO_LARGE` khi tổng JSON payload thumbnail/video quá lớn
 - mỗi extraction batch giờ được `prepare -> embed -> persist` ngay, nên nếu một batch sau lỗi thì các batch trước vẫn đã được checkpoint vào local catalog và `Qdrant`
 - persist vào `Qdrant` giờ dùng bulk upsert theo chunk thay vì từng embedding một, nên full-library run giảm đáng kể số HTTP round-trip tới vector backend
@@ -242,6 +242,7 @@ Runtime config đầu tiên được chốt theo hướng một file local duy n
 - vị trí mặc định: thư mục làm việc của CLI
 - mục tiêu: cấu hình album output, local storage paths, scan/extract/index/retrieve defaults, và embedding provider selection
 - mặc định Phase 4 hiện chốt `embedding.provider = "open-clip"` với `embedding.model = "ViT-B-32"` và `embedding.pretrained = "laion2b_s34b_b79k"`
+- mặc định `extractor.video_strategy = "storyboard"` để video không còn bị nén semantics vào đúng 1 poster frame; runtime vẫn fallback search/cache được với embeddings `video-poster-frame` cũ
 
 Config sample và field rules được ghi tại [docs/architecture.md](/Users/hoaiduc/Documents/VectorDB Image/docs/architecture.md).
 

@@ -879,6 +879,74 @@ test("index pipeline uses cached catalog and vectors by default when cache exist
   });
 });
 
+test("index pipeline cache hit still reuses legacy video poster frame embeddings under storyboard config", async () => {
+  await withTempDir(async (tempDir) => {
+    const catalogRepository = createCatalogRepository({
+      filePath: path.join(tempDir, "catalog-store.json"),
+    });
+    const vectorRepository = createVectorRepository({
+      filePath: path.join(tempDir, "vector-store.json"),
+    });
+
+    await Promise.all([
+      catalogRepository.initialize(),
+      vectorRepository.initialize(),
+    ]);
+
+    const cachedAsset = await catalogRepository.upsertAsset({
+      local_identifier: "VID/L0/001",
+      asset_type: "video",
+      pixel_width: 1920,
+      pixel_height: 1080,
+      duration_seconds: 12.4,
+      modification_date: "2026-06-18T08:00:00.000Z",
+      indexed_at: "2026-06-18T08:00:00.000Z",
+      last_seen_at: "2026-06-18T08:00:00.000Z",
+    });
+
+    const cachedEmbedding = buildEmbeddingRecord({
+      asset_id: cachedAsset.asset_id,
+      local_identifier: cachedAsset.local_identifier,
+      representation_kind: "video-poster-frame",
+      embedding_provider: "open-clip",
+      embedding_model: DEFAULT_CONFIG.embedding.model,
+      source_fingerprint: cachedAsset.source_fingerprint,
+      indexed_at: "2026-06-18T08:00:00.000Z",
+      extraction_signature: "video-poster-frame:224",
+    });
+
+    await vectorRepository.saveEmbedding({
+      record: cachedEmbedding,
+      vector: Array.from({ length: 8 }, (_, index) => index / 10),
+    });
+
+    const pipeline = createIndexPipeline({
+      scanLibraryFn: () => {
+        throw new Error("scan should not run on cache hit");
+      },
+      extractRepresentationsFn: () => {
+        throw new Error("extract should not run on cache hit");
+      },
+      catalogRepository,
+      vectorRepository,
+    });
+
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.extractor.video_strategy = "storyboard";
+
+    const result = await pipeline.run({
+      config,
+      limit: 1,
+      timeoutSeconds: 30,
+      useCache: true,
+    });
+
+    assert.equal(result.cache_mode, "hit");
+    assert.equal(result.persisted_embedding_count, 1);
+    assert.equal(result.persisted_embeddings[0].representation_kind, "video-poster-frame");
+  });
+});
+
 test("index command profile output includes timings, throughput, and breakdown", async () => {
   const result = await runIndexLikeCommand({
     cwd: "/tmp/mvi",
@@ -1003,8 +1071,8 @@ test("index pipeline extracts in chunks to avoid oversized bridge payloads", asy
           { local_identifier: "C/L0/001", asset_type: "video" },
         ],
       }),
-      extractRepresentationsFn: async ({ limit, offset }) => {
-        extractionCalls.push({ limit, offset });
+      extractRepresentationsFn: async ({ limit, offset, videoStrategy }) => {
+        extractionCalls.push({ limit, offset, videoStrategy });
         const source = [
           {
             local_identifier: "A/L0/001",
@@ -1081,8 +1149,8 @@ test("index pipeline extracts in chunks to avoid oversized bridge payloads", asy
     });
 
     assert.deepEqual(extractionCalls, [
-      { limit: 2, offset: 0 },
-      { limit: 1, offset: 2 },
+      { limit: 2, offset: 0, videoStrategy: "storyboard" },
+      { limit: 1, offset: 2, videoStrategy: "storyboard" },
     ]);
     assert.equal(result.extracted_representation_count, 3);
     assert.equal(result.persisted_embedding_count, 3);
@@ -2124,6 +2192,20 @@ test("config validation rejects a non-boolean retriever.write_to_photos_results_
         error.details?.field,
         "retriever.write_to_photos_results_album"
       );
+      return true;
+    }
+  );
+});
+
+test("config validation rejects an unsupported extractor.video_strategy", () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.extractor.video_strategy = "full-video";
+
+  assert.throws(
+    () => validateConfig(config),
+    (error) => {
+      assert.equal(error.code, "CONFIG_FIELD_INVALID");
+      assert.equal(error.details.field, "extractor.video_strategy");
       return true;
     }
   );

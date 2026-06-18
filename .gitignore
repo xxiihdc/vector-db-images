@@ -7,3 +7,6 @@ tmp/
 logs/
 coverage/
 __pycache__/
+.tmp/
+*.log
+*.cache

@@ -96,6 +96,7 @@ Quy ước:
   - [x] Khi thiếu runtime cho embedding provider, output phải nói rõ thiếu gì, command cài thư viện nếu có, và nhắc rằng pretrained model có thể auto-download ở lần chạy đầu
 - [x] Implement vector indexing path cho ảnh và video không tạo file tạm
 - [x] Implement local semantic search cho asset image và video
+- [x] Nâng video representation mặc định từ single poster frame sang multi-frame storyboard in-memory và vẫn giữ backward compatibility cho `video-poster-frame` đã index
 - [x] Thay local JSON vector store prototype bằng backend semantic retrieval phù hợp cho MVP
   - [x] Evaluate và chốt 1 hướng giữa vector DB chuyên dụng với SQLite-based vector search theo tiêu chí local-first trên Apple Silicon
   - [x] Implement repository backend mới cho vector persistence và ANN/vector lookup

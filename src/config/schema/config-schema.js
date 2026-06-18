@@ -76,5 +76,20 @@ export function validateConfig(config) {
     );
   }
 
+  const videoStrategy = config.extractor?.video_strategy;
+  if (
+    videoStrategy !== undefined &&
+    !["poster-frame", "storyboard"].includes(String(videoStrategy))
+  ) {
+    throw new AppError("Config field extractor.video_strategy is unsupported.", {
+      code: "CONFIG_FIELD_INVALID",
+      details: {
+        field: "extractor.video_strategy",
+        value: videoStrategy,
+        supported_values: ["poster-frame", "storyboard"],
+      },
+    });
+  }
+
   return config;
 }

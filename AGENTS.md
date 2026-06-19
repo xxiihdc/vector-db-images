@@ -11,6 +11,7 @@ Media Vector Index
   - tools đã sử dụng
   - skills đã sử dụng
   - agents đã sử dụng
+- Nếu trong task có command native/macOS API liên quan `Photos`, `PhotoKit`, `PyObjC`, `TCC`, hoặc quyền hệ thống mà agent không chạy được trong sandbox, phần output cuối phải liệt kê rõ các command đó để Đức có thể chạy trên máy thật khi cần.
 - Nếu không dùng skill hoặc agent phụ trợ nào, phải ghi rõ là không sử dụng.
 - Sau khi hoàn thành một task, trước khi chốt output cuối, luôn tự review nhanh workflow vừa chạy:
   - có step nào chưa ổn hoặc còn thủ công quá không
@@ -121,6 +122,7 @@ Các điểm dưới đây đã từng được ghi khá dài trong `README.md`;
 ### Runtime/verification notes đã chốt
 
 - Không coi agent bắt buộc phải tự chạy test native thành công trong sandbox khi task phụ thuộc TCC, Photos framework, hoặc iCloud-backed assets
+- Không tự chạy trong sandbox các command đụng trực tiếp macOS native API hoặc permission flow như `Photos framework`, `PhotoKit`, `PyObjC bridge`, `TCC prompt`, album mutation trong Photos, hay các probe native tương đương; chỉ chạy khi Đức yêu cầu rõ hoặc tự xác nhận trên máy thật.
 - Nếu TCC, Photos framework, hoặc iCloud access bị chặn, hãy dừng ở mức báo cáo blocker, mô tả rõ giới hạn verify, hỏi Đức xem có nên tiếp tục với code-only validation hay defer native verification, và không tuyên bố task đã được verify thành công.
 - Nếu Đức đã xác nhận một command native chạy đúng trên máy thật, coi đó là nguồn verify chính cho behavior native
 - Với search quality hoặc latency, verify trên library thật quan trọng hơn test sandbox thuần

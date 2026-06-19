@@ -1,0 +1,67 @@
+{
+  "benchmark_name": "feature-001-default-query-pack",
+  "created_at": "2026-06-19T07:53:10.691Z",
+  "asset_limit": 50,
+  "query_limit": 5,
+  "query_pack_path": "/Users/hoaiduc/Documents/VectorDB Image/specs/001-stronger-embedding-model/benchmark-query-pack.json",
+  "query_pack": {
+    "name": "feature-001-default-query-pack",
+    "text_queries": [
+      "sunset beach",
+      "dog running",
+      "group photo indoors"
+    ]
+  },
+  "results": [
+    {
+      "rank": 1,
+      "candidate_id": "open-clip:ViT-B-32:laion2b_s34b_b79k:224",
+      "candidate_preset": "baseline",
+      "model_identity": "open-clip:ViT-B-32:laion2b_s34b_b79k",
+      "target_resolution": 224,
+      "configured_batch_size": 8,
+      "benchmark_batch_size": 8,
+      "capability_ok": true,
+      "runtime_device": "mps",
+      "recommended_extractor_size": 224,
+      "missing_requirements": [],
+      "indexing_status": "completed",
+      "indexing_items_per_second": 2549.59,
+      "query_latency_ms": 2868.3,
+      "quality_notes": [
+        "index persisted 50 embeddings",
+        "sunset beach: top=7A51817C-62BF-4E1D-B2D8-4D9D4A4C7C34/L0/001 score=0.1846",
+        "dog running: top=7454029F-EDD1-422B-A6F5-9908E601BF07/L0/001 score=0.1981",
+        "group photo indoors: top=7454029F-EDD1-422B-A6F5-9908E601BF07/L0/001 score=0.2184",
+        "Compare path skipped exact embedding count to avoid non-critical backend metric reads."
+      ],
+      "status": "bench-passed",
+      "failure_mode": null
+    },
+    {
+      "rank": 2,
+      "candidate_id": "open-clip:ViT-H-14:laion2b_s32b_b79k:224",
+      "candidate_preset": "fallback-safe",
+      "model_identity": "open-clip:ViT-H-14:laion2b_s32b_b79k",
+      "target_resolution": 224,
+      "configured_batch_size": 2,
+      "benchmark_batch_size": 2,
+      "capability_ok": true,
+      "runtime_device": "mps",
+      "recommended_extractor_size": 224,
+      "missing_requirements": [],
+      "indexing_status": "completed",
+      "indexing_items_per_second": 667.878,
+      "query_latency_ms": 8094.9,
+      "quality_notes": [
+        "index persisted 50 embeddings",
+        "sunset beach: top=F436AF9B-5016-41C3-BD88-03784035B470/L0/001 score=0.2162",
+        "dog running: top=0AF88179-D96D-4088-B923-4DC0B59683C7/L0/001 score=0.2023",
+        "group photo indoors: top=0AF88179-D96D-4088-B923-4DC0B59683C7/L0/001 score=0.2380",
+        "Compare path skipped exact embedding count to avoid non-critical backend metric reads."
+      ],
+      "status": "bench-passed",
+      "failure_mode": null
+    }
+  ]
+}

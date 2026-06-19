@@ -40,6 +40,7 @@ export function createSearchService({
     modelIdentity,
     config,
     limit,
+    includeEmbeddingCount = true,
     representationKinds = getDefaultRepresentationKinds(config),
     matchStrategy = "semantic-vector",
     queryText = null,
@@ -48,21 +49,29 @@ export function createSearchService({
     const searchLimit = Number.isFinite(limit) && limit > 0
       ? Math.trunc(limit)
       : config?.retriever?.default_limit ?? 50;
+    const searchFilters = {
+      embedding_model: embeddingModel,
+      model_identity: modelIdentity,
+      representation_kinds: representationKinds,
+      statuses: ["ready", "stale"],
+    };
+    const searchHitsPromise = vectorRepository.searchByVector({
+      vector: queryVector,
+      embedding_model: embeddingModel,
+      model_identity: modelIdentity,
+      representation_kinds: representationKinds,
+      limit: searchLimit,
+    });
+    const searchedEmbeddingCountPromise = includeEmbeddingCount
+      ? vectorRepository.countEmbeddings(searchFilters)
+      : Promise.resolve(null);
     const [searchedEmbeddingCount, searchHits] = await Promise.all([
-      vectorRepository.countEmbeddings({
-        embedding_model: embeddingModel,
-        model_identity: modelIdentity,
-        representation_kinds: representationKinds,
-        statuses: ["ready", "stale"],
-      }),
-      vectorRepository.searchByVector({
-        vector: queryVector,
-        embedding_model: embeddingModel,
-        model_identity: modelIdentity,
-        representation_kinds: representationKinds,
-        limit: searchLimit,
-      }),
+      searchedEmbeddingCountPromise,
+      searchHitsPromise,
     ]);
+    const countSkippedNote = includeEmbeddingCount
+      ? []
+      : ["Exact embedding count was skipped for this benchmark compare run."];
 
     if (searchHits.length === 0) {
       return {
@@ -74,6 +83,7 @@ export function createSearchService({
         results: [],
         searched_embedding_count: searchedEmbeddingCount,
         notes: [
+          ...countSkippedNote,
           "Local semantic search found no active embeddings for the configured model.",
         ],
       };
@@ -136,6 +146,7 @@ export function createSearchService({
       results,
       searched_embedding_count: searchedEmbeddingCount,
       notes: [
+        ...countSkippedNote,
         `Semantic search queried the configured vector backend via ${modelIdentity}.`,
       ],
     };
@@ -145,6 +156,7 @@ export function createSearchService({
     query,
     config,
     limit,
+    includeEmbeddingCount = true,
     representationKinds = getDefaultRepresentationKinds(config),
   } = {}) {
     const normalizedQuery = normalizeQuery(query);
@@ -166,6 +178,7 @@ export function createSearchService({
       modelIdentity: queryEmbedding.model_identity,
       config,
       limit,
+      includeEmbeddingCount,
       representationKinds,
       matchStrategy: "semantic-vector",
       queryText: normalizedQuery,
@@ -177,6 +190,7 @@ export function createSearchService({
     imagePath,
     config,
     limit,
+    includeEmbeddingCount = true,
     representationKinds = getDefaultRepresentationKinds(config),
   } = {}) {
     const imageFile = await readLocalImageFile(imagePath);
@@ -192,6 +206,7 @@ export function createSearchService({
       modelIdentity: queryEmbedding.model_identity,
       config,
       limit,
+      includeEmbeddingCount,
       representationKinds,
       matchStrategy: "semantic-vector-image-query",
       queryText: `[image] ${imageFile.file_name}`,

@@ -965,6 +965,180 @@ test("qdrant vector repository prefers scoped collection over legacy base collec
   assert.equal(scopedQueryCalls.length, 1);
 });
 
+test("qdrant vector repository pushes search filters down to scoped query payload", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+  const modelIdentity = "open-clip:ViT-H-14:laion2b_s32b_b79k";
+  const scopedCollectionName =
+    "media-index--open-clip-vit-h-14-laion2b-s32b-b79k--37b6bacbd661";
+  const embedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-scoped-filters",
+    local_identifier: "QDRANT/SCOPED/FILTERS",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-scoped-filters",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+    status: "ready",
+  });
+  const pointId = embedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+
+  qdrant.state.collections.set(scopedCollectionName, {
+    name: scopedCollectionName,
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.pointsByCollection.set(
+    scopedCollectionName,
+    new Map([
+      [
+        pointId,
+        {
+          id: pointId,
+          vector: [0, 1, 0, 0],
+          payload: structuredClone(embedding),
+        },
+      ],
+    ])
+  );
+
+  await repository.initialize();
+
+  const hits = await repository.searchByVector({
+    vector: [0, 1, 0, 0],
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    representation_kinds: ["image-thumbnail", "video-storyboard"],
+    limit: 5,
+  });
+  const queryCall = qdrant.state.calls.find(
+    (call) =>
+      call.method === "POST" &&
+      call.pathname === `/collections/${scopedCollectionName}/points/query`
+  );
+
+  assert.equal(hits.length, 1);
+  assert.deepEqual(queryCall.body.filter, {
+    must: [
+      {
+        key: "embedding_model",
+        match: {
+          value: "ViT-H-14",
+        },
+      },
+      {
+        key: "representation_kind",
+        match: {
+          any: ["image-thumbnail", "video-storyboard"],
+        },
+      },
+      {
+        key: "status",
+        match: {
+          any: ["ready", "stale"],
+        },
+      },
+    ],
+  });
+});
+
+test("qdrant vector repository retries transient query transport failures", async () => {
+  const qdrant = createMockQdrantFetch();
+  const failingFetchFn = async (url, options = {}) => {
+    const parsedUrl = new URL(url);
+
+    if (
+      options.method === "POST" &&
+      /\/collections\/.+\/points\/query$/.test(parsedUrl.pathname) &&
+      !failingFetchFn.hasFailed
+    ) {
+      failingFetchFn.hasFailed = true;
+      throw new AppError("Failed to reach Qdrant at http://127.0.0.1:6333.", {
+        code: "VECTOR_BACKEND_UNREACHABLE",
+      });
+    }
+
+    return qdrant.fetchFn(url, options);
+  };
+  failingFetchFn.hasFailed = false;
+
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: failingFetchFn,
+  });
+  const modelIdentity = "open-clip:ViT-H-14:laion2b_s32b_b79k";
+  const scopedCollectionName =
+    "media-index--open-clip-vit-h-14-laion2b-s32b-b79k--37b6bacbd661";
+  const embedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-query-retry",
+    local_identifier: "QDRANT/QUERY/RETRY",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-query-retry",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+    status: "ready",
+  });
+  const pointId = embedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+
+  qdrant.state.collections.set(scopedCollectionName, {
+    name: scopedCollectionName,
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.pointsByCollection.set(
+    scopedCollectionName,
+    new Map([
+      [
+        pointId,
+        {
+          id: pointId,
+          vector: [1, 0, 0, 0],
+          payload: structuredClone(embedding),
+        },
+      ],
+    ])
+  );
+
+  await repository.initialize();
+
+  const hits = await repository.searchByVector({
+    vector: [1, 0, 0, 0],
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+  const queryCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      call.pathname === `/collections/${scopedCollectionName}/points/query`
+  );
+
+  assert.equal(hits.length, 1);
+  assert.equal(failingFetchFn.hasFailed, true);
+  assert.equal(queryCalls.length, 1);
+});
+
 test("qdrant vector repository counts filtered scoped embeddings without scroll fallback", async () => {
   const qdrant = createMockQdrantFetch();
   const repository = createVectorRepository({
@@ -2333,6 +2507,70 @@ test("search service queries vector repository by model identity", async () => {
   assert.equal(result.result_count, 1);
   assert.equal(calls[0].filters.model_identity, "open-clip:ViT-B-32:special-pretrained");
   assert.equal(calls[1].filters.model_identity, "open-clip:ViT-B-32:special-pretrained");
+});
+
+test("search service can skip exact embedding count for benchmark compare runs", async () => {
+  const calls = [];
+  const searchService = createSearchService({
+    catalogRepository: {
+      async getAssetByAssetId(assetId) {
+        return {
+          asset_id: assetId,
+          local_identifier: "IMG/BENCH/001",
+          asset_type: "image",
+        };
+      },
+    },
+    vectorRepository: {
+      async countEmbeddings(filters) {
+        calls.push({ fn: "countEmbeddings", filters });
+        return 1;
+      },
+      async searchByVector(filters) {
+        calls.push({ fn: "searchByVector", filters });
+        return [
+          {
+            embedding: {
+              asset_id: "asset:bench-1",
+              embedding_id: "embedding:bench-1",
+              representation_kind: "image-thumbnail",
+              source_fingerprint: "fp:bench-1",
+              embedding_dimensions: 3,
+              indexed_at: "2026-06-19T07:00:00.000Z",
+            },
+            score: 0.91,
+          },
+        ];
+      },
+    },
+    createEmbeddingProviderFn: () => ({
+      async embedQuery({ text }) {
+        return {
+          text,
+          vector: [1, 0, 0],
+          embedding_provider: "open-clip",
+          embedding_model: "ViT-H-14",
+          model_identity: "open-clip:ViT-H-14:laion2b_s32b_b79k",
+        };
+      },
+    }),
+  });
+
+  const result = await searchService.search({
+    query: "benchmark compare",
+    config: structuredClone(DEFAULT_CONFIG),
+    limit: 5,
+    includeEmbeddingCount: false,
+  });
+
+  assert.equal(result.result_count, 1);
+  assert.equal(result.searched_embedding_count, null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].fn, "searchByVector");
+  assert.match(
+    result.notes.join("\n"),
+    /Exact embedding count was skipped for this benchmark compare run\./
+  );
 });
 
 test("album service ensures results album using configured album name", async () => {

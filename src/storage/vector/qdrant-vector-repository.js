@@ -309,6 +309,21 @@ function buildScopedCollectionName(baseCollectionName, modelIdentity) {
   return `${normalizedBase}--${normalizedIdentity}--${identityHash}`;
 }
 
+function waitMs(durationMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+}
+
+function isRetriableVectorReadError(error) {
+  return (
+    error instanceof AppError &&
+    ["VECTOR_BACKEND_UNREACHABLE", "VECTOR_BACKEND_TIMEOUT", "VECTOR_BACKEND_HTTP_ERROR"].includes(
+      error.code
+    )
+  );
+}
+
 export function createQdrantVectorRepository({
   serviceUrl,
   collectionName,
@@ -726,15 +741,46 @@ export function createQdrantVectorRepository({
 
     const overfetchLimit = Math.min(Math.max(limit * 5, limit), 200);
     const hits = [];
+    const statuses = ["ready", "stale"];
 
     for (const targetCollectionName of collectionNames) {
-      const response = await client.queryPoints(targetCollectionName, {
-        query: vector.map(Number),
-        filter: buildPayloadFilter({ embedding_model, model_identity }),
-        limit: overfetchLimit,
-        with_payload: true,
-        with_vector: false,
+      const scopedCollectionName = buildScopedCollectionName(collectionName, model_identity);
+      const queryFilter = buildPayloadFilter({
+        embedding_model,
+        model_identity:
+          targetCollectionName === scopedCollectionName ? null : model_identity,
+        representation_kinds,
+        statuses,
       });
+      let response = null;
+      let lastError = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          response = await client.queryPoints(targetCollectionName, {
+            query: vector.map(Number),
+            filter: queryFilter,
+            limit: overfetchLimit,
+            with_payload: true,
+            with_vector: false,
+          });
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+
+          if (!isRetriableVectorReadError(error) || attempt === 2) {
+            throw error;
+          }
+
+          await waitMs(150 * (attempt + 1));
+        }
+      }
+
+      if (!response && lastError) {
+        throw lastError;
+      }
+
       const points = extractPointArray(response);
 
       hits.push(

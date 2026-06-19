@@ -177,10 +177,15 @@ export async function runEmbeddingBenchmark({
         query,
         config: benchmarkConfig,
         limit: resolvedQueryLimit,
+        includeEmbeddingCount: false,
       });
       searchLatencies.push(performance.now() - startedAt);
       result.quality_notes.push(`${query}: ${summarizeSearchResult(searchResult)}`);
     }
+
+    result.quality_notes.push(
+      "Compare path skipped exact embedding count to avoid non-critical backend metric reads."
+    );
 
     result.query_latency_ms =
       searchLatencies.length > 0

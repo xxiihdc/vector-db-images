@@ -1,0 +1,7 @@
+interface:
+  display_name: "Qdrant Benchmark Investigation"
+  short_description: "Diagnose compare-path Qdrant failures cleanly"
+  default_prompt: "Use $qdrant-benchmark-investigation to diagnose benchmark-only Qdrant failures, separate reindex health from compare-path bugs, and recommend the lowest-debt fix."
+
+policy:
+  allow_implicit_invocation: true

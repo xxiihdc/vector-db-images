@@ -159,6 +159,24 @@ function buildPayloadFilter(filters = {}) {
     });
   }
 
+  if (Array.isArray(filters.representation_kinds) && filters.representation_kinds.length > 0) {
+    must.push({
+      key: "representation_kind",
+      match: {
+        any: filters.representation_kinds,
+      },
+    });
+  }
+
+  if (Array.isArray(filters.statuses) && filters.statuses.length > 0) {
+    must.push({
+      key: "status",
+      match: {
+        any: filters.statuses,
+      },
+    });
+  }
+
   return must.length > 0 ? { must } : null;
 }
 
@@ -378,29 +396,24 @@ export function createQdrantVectorRepository({
   async function resolveReadCollectionNames(modelIdentity = null) {
     const preferredCollectionName = buildScopedCollectionName(collectionName, modelIdentity);
     const existingManagedCollections = await listManagedCollectionNames();
-    const candidateNames = [];
 
     if (modelIdentity) {
-      candidateNames.push(preferredCollectionName);
-
-      if (collectionName !== preferredCollectionName) {
-        candidateNames.push(collectionName);
+      if (existingManagedCollections.includes(preferredCollectionName)) {
+        return [preferredCollectionName];
       }
-    } else {
-      candidateNames.push(...existingManagedCollections);
 
-      if (!candidateNames.includes(collectionName)) {
-        candidateNames.push(collectionName);
+      if (existingManagedCollections.includes(collectionName)) {
+        return [collectionName];
       }
+
+      return [preferredCollectionName];
     }
 
-    return Array.from(new Set(candidateNames)).filter((name) => {
-      if (name === preferredCollectionName) {
-        return true;
-      }
+    if (existingManagedCollections.length > 0) {
+      return existingManagedCollections;
+    }
 
-      return existingManagedCollections.includes(name);
-    });
+    return [collectionName];
   }
 
   async function ensureCollection(targetCollectionName, vectorSize) {
@@ -551,15 +564,6 @@ export function createQdrantVectorRepository({
   }
 
   async function countEmbeddings(filters = {}) {
-    const needsPostFilter =
-      (Array.isArray(filters.statuses) && filters.statuses.length > 0) ||
-      (Array.isArray(filters.representation_kinds) && filters.representation_kinds.length > 0);
-
-    if (needsPostFilter) {
-      const embeddings = await scrollEmbeddings({ filters });
-      return embeddings.length;
-    }
-
     const collectionNames = await resolveReadCollectionNames(filters.model_identity);
     let total = 0;
 

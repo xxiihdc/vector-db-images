@@ -130,6 +130,10 @@ function matchesMustCondition(point, condition) {
     return true;
   }
 
+  if (Array.isArray(condition?.match?.any)) {
+    return condition.match.any.includes(point.payload?.[condition.key]);
+  }
+
   return point.payload?.[condition.key] === condition?.match?.value;
 }
 
@@ -852,6 +856,180 @@ test("qdrant vector repository still reads legacy base collection for the reques
 
   assert.equal(hits.length, 1);
   assert.equal(hits[0].embedding.embedding_id, legacyEmbedding.embedding_id);
+});
+
+test("qdrant vector repository prefers scoped collection over legacy base collection when both exist", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+  const modelIdentity = "open-clip:ViT-H-14:laion2b_s32b_b79k";
+  const scopedCollectionName =
+    "media-index--open-clip-vit-h-14-laion2b-s32b-b79k--37b6bacbd661";
+  const scopedEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-scoped-preferred",
+    local_identifier: "QDRANT/SCOPED/PREFERRED",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-scoped-preferred",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+  const legacyEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-legacy-ignored",
+    local_identifier: "QDRANT/LEGACY/IGNORED",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-legacy-ignored",
+    indexed_at: "2026-06-18T09:59:00.000Z",
+  });
+  const scopedPointId = scopedEmbedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+  const legacyPointId = legacyEmbedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+
+  qdrant.state.collections.set("media-index", {
+    name: "media-index",
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.collections.set(scopedCollectionName, {
+    name: scopedCollectionName,
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.pointsByCollection.set(
+    "media-index",
+    new Map([
+      [
+        legacyPointId,
+        {
+          id: legacyPointId,
+          vector: [0, 1, 0, 0],
+          payload: structuredClone(legacyEmbedding),
+        },
+      ],
+    ])
+  );
+  qdrant.state.pointsByCollection.set(
+    scopedCollectionName,
+    new Map([
+      [
+        scopedPointId,
+        {
+          id: scopedPointId,
+          vector: [0, 1, 0, 0],
+          payload: structuredClone(scopedEmbedding),
+        },
+      ],
+    ])
+  );
+
+  await repository.initialize();
+
+  const hits = await repository.searchByVector({
+    vector: [0, 1, 0, 0],
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+  const legacyScrollCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      call.pathname === "/collections/media-index/points/scroll"
+  );
+  const scopedQueryCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      call.pathname ===
+        `/collections/${scopedCollectionName}/points/query`
+  );
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].embedding.embedding_id, scopedEmbedding.embedding_id);
+  assert.equal(legacyScrollCalls.length, 0);
+  assert.equal(scopedQueryCalls.length, 1);
+});
+
+test("qdrant vector repository counts filtered scoped embeddings without scroll fallback", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+  const modelIdentity = "open-clip:ViT-H-14:laion2b_s32b_b79k";
+  const firstEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-count-1",
+    local_identifier: "QDRANT/COUNT/1",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-count-1",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+    status: "ready",
+  });
+  const secondEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-count-2",
+    local_identifier: "QDRANT/COUNT/2",
+    representation_kind: "video-storyboard",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-count-2",
+    indexed_at: "2026-06-18T10:00:01.000Z",
+    status: "stale",
+  });
+
+  await repository.initialize();
+  await repository.upsertEmbeddings([
+    {
+      record: firstEmbedding,
+      vector: [1, 0, 0, 0],
+    },
+    {
+      record: secondEmbedding,
+      vector: [0, 1, 0, 0],
+    },
+  ]);
+
+  const count = await repository.countEmbeddings({
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    representation_kinds: ["image-thumbnail", "video-storyboard"],
+    statuses: ["ready", "stale"],
+  });
+  const scrollCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      /\/collections\/.+\/points\/scroll$/.test(call.pathname)
+  );
+  const countCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      /\/collections\/.+\/points\/count$/.test(call.pathname)
+  );
+
+  assert.equal(count, 2);
+  assert.equal(scrollCalls.length, 0);
+  assert.equal(countCalls.length, 1);
 });
 
 test("index file command stores one local image with deterministic synthetic local identifier", async () => {

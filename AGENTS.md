@@ -55,6 +55,7 @@ Baseline hiện tại đã được Đức đánh giá là đã đạt mức MVP
    - native Photos review workflow
 6. Khi cân bằng trade-off implementation, ưu tiên hiệu năng trước rồi mới tới tính tương thích môi trường.
 7. Nếu thêm thư viện hoặc framework ngoài giúp cải thiện throughput hoặc latency ít nhất 20% trên workload local-first trên macOS so với dữ liệu thực tế trên máy Đức, ưu tiên sử dụng và cập nhật setup/docs tương ứng.
+8. Ưu tiên code theo kiểu low coupling, module rõ ràng, có thể tháo lắp hoặc nâng cấp từng phần mà không buộc sửa lan rộng toàn hệ thống.
 
 ## Non-Goals
 

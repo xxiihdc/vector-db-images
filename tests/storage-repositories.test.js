@@ -1139,6 +1139,86 @@ test("qdrant vector repository retries transient query transport failures", asyn
   assert.equal(queryCalls.length, 1);
 });
 
+test("qdrant vector repository retries transient collection metadata read failures", async () => {
+  const qdrant = createMockQdrantFetch();
+  const scopedCollectionName =
+    "media-index--open-clip-vit-h-14-laion2b-s32b-b79k--37b6bacbd661";
+  const failingFetchFn = async (url, options = {}) => {
+    const parsedUrl = new URL(url);
+
+    if (
+      options.method === "GET" &&
+      parsedUrl.pathname === `/collections/${scopedCollectionName}` &&
+      !failingFetchFn.hasFailed
+    ) {
+      failingFetchFn.hasFailed = true;
+      throw new AppError("Failed to reach Qdrant at http://127.0.0.1:6333.", {
+        code: "VECTOR_BACKEND_UNREACHABLE",
+      });
+    }
+
+    return qdrant.fetchFn(url, options);
+  };
+  failingFetchFn.hasFailed = false;
+
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: failingFetchFn,
+  });
+  const modelIdentity = "open-clip:ViT-H-14:laion2b_s32b_b79k";
+  const embedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-metadata-retry",
+    local_identifier: "QDRANT/METADATA/RETRY",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-metadata-retry",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+    status: "ready",
+  });
+  const pointId = embedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+
+  qdrant.state.collections.set(scopedCollectionName, {
+    name: scopedCollectionName,
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.pointsByCollection.set(
+    scopedCollectionName,
+    new Map([
+      [
+        pointId,
+        {
+          id: pointId,
+          vector: [1, 0, 0, 0],
+          payload: structuredClone(embedding),
+        },
+      ],
+    ])
+  );
+
+  await repository.initialize();
+
+  const hits = await repository.searchByVector({
+    vector: [1, 0, 0, 0],
+    embedding_model: "ViT-H-14",
+    model_identity: modelIdentity,
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+
+  assert.equal(hits.length, 1);
+  assert.equal(failingFetchFn.hasFailed, true);
+});
+
 test("qdrant vector repository counts filtered scoped embeddings without scroll fallback", async () => {
   const qdrant = createMockQdrantFetch();
   const repository = createVectorRepository({

@@ -324,6 +324,26 @@ function isRetriableVectorReadError(error) {
   );
 }
 
+async function retryVectorRead(operation, { retryLimit = 3, baseDelayMs = 150 } = {}) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < retryLimit; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetriableVectorReadError(error) || attempt === retryLimit - 1) {
+        throw error;
+      }
+
+      await waitMs(baseDelayMs * (attempt + 1));
+    }
+  }
+
+  throw lastError;
+}
+
 export function createQdrantVectorRepository({
   serviceUrl,
   collectionName,
@@ -381,7 +401,7 @@ export function createQdrantVectorRepository({
       return [...knownCollectionNames];
     }
 
-    const payload = await client.listCollections();
+    const payload = await retryVectorRead(() => client.listCollections());
     knownCollectionNames = (payload?.result?.collections ?? [])
       .map((entry) => entry?.name)
       .filter(Boolean)
@@ -394,7 +414,7 @@ export function createQdrantVectorRepository({
       return cachedCollections.get(targetCollectionName);
     }
 
-    const info = await client.getCollection(targetCollectionName);
+    const info = await retryVectorRead(() => client.getCollection(targetCollectionName));
 
     if (info) {
       markKnownCollectionName(targetCollectionName);
@@ -547,13 +567,15 @@ export function createQdrantVectorRepository({
       let offset = null;
 
       do {
-        const response = await client.scrollPoints(targetCollectionName, {
-          limit: pageSize,
-          filter: buildPayloadFilter(filters),
-          with_payload: true,
-          with_vector: includeVector,
-          ...(offset ? { offset } : {}),
-        });
+        const response = await retryVectorRead(() =>
+          client.scrollPoints(targetCollectionName, {
+            limit: pageSize,
+            filter: buildPayloadFilter(filters),
+            with_payload: true,
+            with_vector: includeVector,
+            ...(offset ? { offset } : {}),
+          })
+        );
         const points = extractPointArray(response);
         const nextPageOffset = extractNextPageOffset(response);
 
@@ -589,10 +611,12 @@ export function createQdrantVectorRepository({
         continue;
       }
 
-      const response = await client.countPoints(targetCollectionName, {
-        exact: true,
-        filter: buildPayloadFilter(filters),
-      });
+      const response = await retryVectorRead(() =>
+        client.countPoints(targetCollectionName, {
+          exact: true,
+          filter: buildPayloadFilter(filters),
+        })
+      );
       total += extractCount(response);
     }
 

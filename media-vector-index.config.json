@@ -19,7 +19,7 @@
     "batch_size": 200
   },
   "extractor": {
-    "image_thumbnail_size": 224,
+    "image_thumbnail_size": 378,
     "video_strategy": "storyboard",
     "allow_network_access": true
   },
@@ -35,11 +35,11 @@
   },
   "embedding": {
     "provider": "open-clip",
-    "candidate_preset": "fallback-safe",
-    "model": "ViT-H-14",
-    "pretrained": "laion2b_s32b_b79k",
+    "candidate_preset": "fallback-strong",
+    "model": "ViT-H-14-378-quickgelu",
+    "pretrained": "dfn5b",
     "device": "auto",
-    "target_resolution": 224,
+    "target_resolution": 378,
     "normalize": true,
     "batch_size": 2,
     "benchmark_batch_size": 2,

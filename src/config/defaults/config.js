@@ -33,6 +33,15 @@ export const DEFAULT_CONFIG = Object.freeze({
     album_write_mode: "replace",
     write_to_photos_results_album: true,
   },
+  telegram: {
+    enabled: false,
+    bot_token: "",
+    allowed_chat_ids: [],
+    poll_timeout_seconds: 30,
+    poll_retry_delay_ms: 3000,
+    reply_result_limit: 5,
+    offset_store_path: ".data/telegram-offset.json",
+  },
   embedding: {
     provider: "open-clip",
     candidate_preset: DEFAULT_OPEN_CLIP_CANDIDATE_PRESET,

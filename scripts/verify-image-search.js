@@ -5,10 +5,13 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { readLocalImageFile } from "../src/shared/utils/local-image-file.js";
+import { loadProjectEnv } from "../src/shared/utils/project-env.js";
+import { resolveProjectRoot } from "../src/shared/utils/project-paths.js";
 
 const scriptFilePath = fileURLToPath(import.meta.url);
 const scriptDir = path.dirname(scriptFilePath);
-const repoRoot = path.resolve(scriptDir, "..");
+loadProjectEnv({ cwd: path.resolve(scriptDir, "..") });
+const repoRoot = resolveProjectRoot(path.resolve(scriptDir, ".."));
 
 function normalizeImagePathArg(argv = []) {
   const combined = argv

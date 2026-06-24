@@ -10,6 +10,7 @@ export function buildHelpText() {
     "  mvi search <query> [--limit 50] [--skip-album] [--json]",
     "  mvi search image <image-path> [--limit 50] [--skip-album] [--json]",
     "  mvi serve [--port 4173] [--json]",
+    "  mvi telegram listen [--json]",
     "  mvi storage vector-check [--json]",
     "  mvi photos check [--json]",
     "  mvi photos request-access [--json]",

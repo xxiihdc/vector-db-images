@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { loadProjectEnv } from "../src/shared/utils/project-env.js";
+import { resolveProjectRoot } from "../src/shared/utils/project-paths.js";
 
 const args = process.argv.slice(2);
+loadProjectEnv();
+const projectRoot = resolveProjectRoot();
 const result = spawnSync(
   "node",
   [
@@ -17,7 +21,7 @@ const result = spawnSync(
     "--json",
   ],
   {
-    cwd: process.cwd(),
+    cwd: projectRoot,
     encoding: "utf8",
   }
 );

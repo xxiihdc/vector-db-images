@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { AppError } from "../../shared/errors/app-error.js";
+import { loadProjectEnv } from "../../shared/utils/project-env.js";
+import { resolveProjectRoot } from "../../shared/utils/project-paths.js";
 
 const PYTHON_BRIDGE_MAX_BUFFER_BYTES = 128 * 1024 * 1024;
 
@@ -21,13 +23,15 @@ function streamBridgeStderr(command, chunk) {
 }
 
 export async function runPythonPhotosBridge(command, options = {}) {
+  loadProjectEnv();
   const pythonExecutable = process.env.MVI_PYTHON_BIN || "python3";
-  const scriptPath = path.resolve(process.cwd(), "python/photos_bridge/bridge.py");
+  const projectRoot = resolveProjectRoot();
+  const scriptPath = path.resolve(projectRoot, "python/photos_bridge/bridge.py");
   const args = [scriptPath, command, "--json", ...(options.args ?? [])];
 
   return new Promise((resolve, reject) => {
     const child = spawn(pythonExecutable, args, {
-      cwd: process.cwd(),
+      cwd: projectRoot,
       stdio: ["pipe", "pipe", "pipe"],
     });
 

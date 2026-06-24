@@ -59,6 +59,11 @@ function summarizeSearchResult(result = {}) {
   return `top=${topResult.local_identifier ?? "missing"} score=${Number(topResult.score ?? 0).toFixed(4)}`;
 }
 
+function toProjectRelativePath(cwd, targetPath) {
+  const relativePath = path.relative(cwd, targetPath);
+  return relativePath || ".";
+}
+
 export async function runEmbeddingBenchmark({
   cwd,
   candidatePresets = [],
@@ -204,13 +209,15 @@ export async function runEmbeddingBenchmark({
   const resultsDir = path.resolve(cwd, DEFAULT_RESULTS_DIR);
   const resultsArtifactPath = path.join(resultsDir, `embedding-benchmark-${timestamp}.json`);
   await ensureDir(resultsDir);
+  const queryPackPathForOutput = toProjectRelativePath(cwd, resolvedQueryPackPath);
+  const resultsArtifactPathForOutput = toProjectRelativePath(cwd, resultsArtifactPath);
 
   const artifact = {
     benchmark_name: queryPack?.name ?? "embedding-benchmark",
     created_at: now().toISOString(),
     asset_limit: resolvedAssetLimit,
     query_limit: resolvedQueryLimit,
-    query_pack_path: resolvedQueryPackPath,
+    query_pack_path: queryPackPathForOutput,
     query_pack: queryPack,
     results,
   };
@@ -225,8 +232,8 @@ export async function runEmbeddingBenchmark({
     config_exists: configState.exists,
     asset_limit: resolvedAssetLimit,
     query_limit: resolvedQueryLimit,
-    query_pack_path: resolvedQueryPackPath,
-    results_artifact_path: resultsArtifactPath,
+    query_pack_path: queryPackPathForOutput,
+    results_artifact_path: resultsArtifactPathForOutput,
     candidate_count: candidates.length,
     results,
     notes: [

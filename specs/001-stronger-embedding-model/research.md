@@ -90,10 +90,10 @@
 
 ## Evidence
 
-- Current repo baseline config: [media-vector-index.config.json](/Users/hoaiduc/Documents/VectorDB%20Image/media-vector-index.config.json:36)
-- Current default config source: [src/config/defaults/config.js](/Users/hoaiduc/Documents/VectorDB%20Image/src/config/defaults/config.js:25)
-- Current provider factory only supports `open-clip`: [src/embedding/create-provider.js](/Users/hoaiduc/Documents/VectorDB%20Image/src/embedding/create-provider.js:1)
-- Current Python bridge dynamically loads `(model, pretrained)` and auto-selects `mps/cuda/cpu`: [python/embedding_bridge/bridge.py](/Users/hoaiduc/Documents/VectorDB%20Image/python/embedding_bridge/bridge.py:63)
+- Current repo baseline config: `media-vector-index.config.json`
+- Current default config source: `src/config/defaults/config.js`
+- Current provider factory only supports `open-clip`: `src/embedding/create-provider.js`
+- Current Python bridge dynamically loads `(model, pretrained)` and auto-selects `mps/cuda/cpu`: `python/embedding_bridge/bridge.py`
 - Official OpenCLIP README with model table and dependency notes:
   - https://github.com/mlfoundations/open_clip
   - https://raw.githubusercontent.com/mlfoundations/open_clip/main/README.md

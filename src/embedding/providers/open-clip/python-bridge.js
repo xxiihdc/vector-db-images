@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { AppError } from "../../../shared/errors/app-error.js";
+import { loadProjectEnv } from "../../../shared/utils/project-env.js";
+import { resolveProjectRoot } from "../../../shared/utils/project-paths.js";
 
 const PYTHON_BRIDGE_MAX_BUFFER_BYTES = 128 * 1024 * 1024;
 
 function getScriptPath() {
-  return path.resolve(process.cwd(), "python/embedding_bridge/bridge.py");
+  return path.resolve(resolveProjectRoot(), "python/embedding_bridge/bridge.py");
 }
 
 function getPythonExecutable() {
@@ -13,10 +15,12 @@ function getPythonExecutable() {
 }
 
 export function runOpenClipEmbeddingBridge(command, input = {}) {
+  loadProjectEnv();
   const pythonExecutable = getPythonExecutable();
   const scriptPath = getScriptPath();
+  const projectRoot = resolveProjectRoot();
   const result = spawnSync(pythonExecutable, [scriptPath, command, "--json"], {
-    cwd: process.cwd(),
+    cwd: projectRoot,
     encoding: "utf8",
     input: JSON.stringify(input),
     maxBuffer: PYTHON_BRIDGE_MAX_BUFFER_BYTES,

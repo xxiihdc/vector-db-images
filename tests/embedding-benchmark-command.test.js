@@ -31,7 +31,7 @@ test("embedding benchmark command parses candidate ladder and renders summary li
         config_exists: true,
         query_pack_path: options.queryPackPath,
         results_artifact_path:
-          "/tmp/mvi/specs/001-stronger-embedding-model/benchmark-results/run.json",
+          "specs/001-stronger-embedding-model/benchmark-results/run.json",
         asset_limit: options.assetLimit,
         query_limit: options.queryLimit,
         results: [

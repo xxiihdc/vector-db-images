@@ -38,6 +38,7 @@ The first runtime layout should keep CLI orchestration separate from media-proce
 ```text
 src/
   app/
+    telegram/
   cli/
   config/
   scanner/
@@ -58,6 +59,7 @@ The first design pass should go one level deeper than top-level folders so the n
 src/
   app/
     search/
+    telegram/
   cli/
     commands/
     formatters/
@@ -104,10 +106,11 @@ src/
 
 - `src/app/`
   - owns application-level orchestration shared by multiple surfaces
-  - keeps search workflow reusable between CLI and the local webserver
+  - keeps search workflow reusable between CLI, the local webserver, and the Telegram bot
 
 - `src/config/`
   - owns project config loading, defaults, validation, and path resolution
+  - honors `MVI_PROJECT_ROOT` as an optional repo-root override for CLI/script entrypoints
   - keeps runtime settings outside the five core layers
 
 - `src/scanner/`
@@ -151,7 +154,11 @@ src/
 
 - `src/app/search/`
   - contains the shared search workflow that loads config, initializes repositories, runs semantic retrieval, and writes album output
-  - keeps CLI and webserver from duplicating orchestration logic
+  - keeps CLI, webserver, and Telegram listener from duplicating orchestration logic
+
+- `src/app/telegram/`
+  - contains the Telegram long-poll client, offset store, message parsing, and listener loop
+  - treats Telegram as another thin retrieval surface layered on top of the shared search workflow
 
 - `src/cli/formatters/`
   - contains terminal output shaping for tables, debug payloads, and summaries

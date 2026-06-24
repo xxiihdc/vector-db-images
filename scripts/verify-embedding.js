@@ -8,9 +8,13 @@ import {
   applyOpenClipCandidateToConfig,
   OPEN_CLIP_MODEL_CANDIDATES,
 } from "../src/embedding/providers/open-clip/model-candidates.js";
+import { loadProjectEnv } from "../src/shared/utils/project-env.js";
+import { resolveProjectRoot } from "../src/shared/utils/project-paths.js";
 
 const execFileAsync = promisify(execFile);
-const CONFIG_PATH = path.resolve(process.cwd(), "media-vector-index.config.json");
+loadProjectEnv();
+const projectRoot = resolveProjectRoot();
+const CONFIG_PATH = path.resolve(projectRoot, "media-vector-index.config.json");
 
 async function loadConfig() {
   return JSON.parse(await readFile(CONFIG_PATH, "utf8"));
@@ -25,7 +29,7 @@ async function runCapabilities() {
     "node",
     ["./src/cli/main.js", "embedding", "capabilities", "--json"],
     {
-      cwd: process.cwd(),
+      cwd: projectRoot,
       maxBuffer: 16 * 1024 * 1024,
     }
   );
@@ -54,7 +58,7 @@ function summarizeProbe(payload = {}) {
 async function main() {
   console.log("Step 1/2: Verify sample config is in sync.");
   const { stdout: configCheck } = await execFileAsync("npm", ["run", "config:check-sample"], {
-    cwd: process.cwd(),
+    cwd: projectRoot,
     maxBuffer: 16 * 1024 * 1024,
   });
   process.stdout.write(configCheck);

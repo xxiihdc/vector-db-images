@@ -1,23 +1,10 @@
 #!/usr/bin/env node
 
 import { cwd as getCwd } from "node:process";
-import { buildHelpText } from "./formatters/help.js";
 import { hasJsonFlag, printOutput } from "./formatters/output.js";
-import { runInitCommand } from "./commands/init.js";
-import { runPhotosCheckCommand } from "./commands/photos-check.js";
-import { runPhotosRequestAccessCommand } from "./commands/photos-request-access.js";
-import { runPhotosScanCommand } from "./commands/photos-scan.js";
-import { runPhotosDebugCommand } from "./commands/photos-debug.js";
-import { runPhotosProbeOriginalsCommand } from "./commands/photos-probe-originals.js";
-import { runPhotosExtractCommand } from "./commands/photos-extract.js";
-import { runPhotosCapabilitiesCommand } from "./commands/photos-capabilities.js";
-import { runEmbeddingCapabilitiesCommand } from "./commands/embedding-capabilities.js";
-import { runEmbeddingBenchmarkCommand } from "./commands/embedding-benchmark.js";
-import { runIndexCommand } from "./commands/index.js";
-import { runReindexCommand } from "./commands/reindex.js";
-import { runSearchCommand } from "./commands/search.js";
-import { runServeCommand } from "./commands/serve.js";
-import { runStorageVectorCheckCommand } from "./commands/storage-vector-check.js";
+import { dispatchCliCommand } from "./dispatch.js";
+import { loadProjectEnv } from "../shared/utils/project-env.js";
+import { resolveProjectRoot } from "../shared/utils/project-paths.js";
 import {
   AppError,
   toDiagnosticErrorPayload,
@@ -25,87 +12,22 @@ import {
 } from "../shared/errors/app-error.js";
 import { writeDiagnosticLog } from "../shared/utils/diagnostics.js";
 
-async function dispatch(argv) {
-  const [command, subcommand, ...rest] = argv;
-  const cwd = getCwd();
-
-  if (!command || command === "help" || command === "--help") {
-    return buildHelpText();
-  }
-
-  if (command === "init") {
-    return runInitCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
-  }
-
-  if (command === "index") {
-    return runIndexCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
-  }
-
-  if (command === "reindex") {
-    return runReindexCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
-  }
-
-  if (command === "search") {
-    return runSearchCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
-  }
-
-  if (command === "serve") {
-    return runServeCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
-  }
-
-  if (command === "storage" && subcommand === "vector-check") {
-    return runStorageVectorCheckCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "check") {
-    return runPhotosCheckCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "request-access") {
-    return runPhotosRequestAccessCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "scan") {
-    return runPhotosScanCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "debug") {
-    return runPhotosDebugCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "capabilities") {
-    return runPhotosCapabilitiesCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "probe-originals") {
-    return runPhotosProbeOriginalsCommand({ cwd, args: rest });
-  }
-
-  if (command === "photos" && subcommand === "extract") {
-    return runPhotosExtractCommand({ cwd, args: rest });
-  }
-
-  if (command === "embedding" && subcommand === "capabilities") {
-    return runEmbeddingCapabilitiesCommand({ cwd, args: rest });
-  }
-
-  if (command === "embedding" && subcommand === "benchmark") {
-    return runEmbeddingBenchmarkCommand({ cwd, args: rest });
-  }
-
-  throw new AppError("Unknown command.", {
-    code: "CLI_UNKNOWN_COMMAND",
-    details: { argv },
-  });
-}
-
 async function main() {
   const argv = process.argv.slice(2);
   const json = hasJsonFlag(argv);
-  const cwd = getCwd();
+  loadProjectEnv({ cwd: getCwd() });
+  const cwd = resolveProjectRoot(getCwd());
+  const abortController = new AbortController();
+  const stop = () => abortController.abort();
+
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
 
   try {
-    const payload = await dispatch(argv.filter((arg) => arg !== "--json"));
+    const payload = await dispatchCliCommand(argv.filter((arg) => arg !== "--json"), {
+      cwd,
+      signal: abortController.signal,
+    });
     printOutput(payload, { json });
   } catch (error) {
     let diagnosticLogPath = null;
@@ -136,6 +58,9 @@ async function main() {
     }
     printOutput(payload, { json: true });
     process.exitCode = 1;
+  } finally {
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
   }
 }
 

@@ -3,7 +3,7 @@
   "created_at": "2026-06-18T15:39:14.094Z",
   "asset_limit": 50,
   "query_limit": 5,
-  "query_pack_path": "/Users/hoaiduc/Documents/VectorDB Image/specs/001-stronger-embedding-model/benchmark-query-pack.json",
+  "query_pack_path": "specs/001-stronger-embedding-model/benchmark-query-pack.json",
   "query_pack": {
     "name": "feature-001-default-query-pack",
     "text_queries": [

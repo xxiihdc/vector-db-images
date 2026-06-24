@@ -19,6 +19,7 @@ The project needs a local CLI-first workflow that can search a Photos library se
 4. let the user run an indexing command on demand from Terminal
 5. let the user search in natural language from Terminal
 6. push matching assets into a Photos album so review happens in the native app
+7. optionally let a Telegram bot trigger the same local search workflow while the Mac is running
 
 ## Must-Have Retrieval Output
 
@@ -42,7 +43,8 @@ Each result should eventually be able to return:
 8. Apple Photos on macOS is the only supported source of truth; originals may reside in iCloud.
 9. Runtime code organization starts with explicit folders for `scanner`, `extractor`, `enrichment`, `indexer`, and `retriever`, with CLI/config/storage concerns kept separate.
 10. Runtime setup starts with one local config file, `media-vector-index.config.json`, instead of multiple env-driven surfaces.
-11. The primary runtime shape is `Node.js CLI + Python photos-bridge`, where the Python bridge owns all direct Photos framework access through PyObjC.
+11. A single optional env override, `MVI_PROJECT_ROOT`, may point commands back to the repo root when the shell is launched from another directory.
+12. The primary runtime shape is `Node.js CLI + Python photos-bridge`, where the Python bridge owns all direct Photos framework access through PyObjC.
 
 ## Retrieval Surface Decision
 
@@ -160,6 +162,14 @@ Repository milestone hiện tại cũng đã thêm một local webserver tối g
 3. gọi lại đúng shared search workflow đang dùng cho CLI thay vì spawn subprocess
 4. hiển thị summary/results cơ bản trong browser
 5. vẫn ghi kết quả match về album `AI Search Results` trong Photos như CLI path
+
+Repository milestone hiện tại cũng có thể expose một local Telegram long-poll bot:
+
+1. chạy trên chính máy Mac của user khi process foreground đang bật
+2. nhận text command từ allowlisted `chat_id`
+3. gọi lại đúng shared search workflow thay vì spawn subprocess
+4. trả lời gọn trên Telegram với top hits và trạng thái album write-back
+5. persist `update_id` offset local để restart không xử lý trùng message cũ
 
 For MVP setup, the runtime also defines two storage-facing contracts:
 

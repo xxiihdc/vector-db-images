@@ -8,9 +8,13 @@ import {
   applyOpenClipCandidateToConfig,
   getOpenClipCandidateByPreset,
 } from "../src/embedding/providers/open-clip/model-candidates.js";
+import { loadProjectEnv } from "../src/shared/utils/project-env.js";
+import { resolveProjectRoot } from "../src/shared/utils/project-paths.js";
 
 const execFileAsync = promisify(execFile);
-const CONFIG_PATH = path.resolve(process.cwd(), "media-vector-index.config.json");
+loadProjectEnv();
+const projectRoot = resolveProjectRoot();
+const CONFIG_PATH = path.resolve(projectRoot, "media-vector-index.config.json");
 
 function summarize(label, payload) {
   const lines = [
@@ -27,7 +31,7 @@ function summarize(label, payload) {
 
 async function runIndex(command, args) {
   const { stdout } = await execFileAsync("node", ["./src/cli/main.js", command, ...args], {
-    cwd: process.cwd(),
+    cwd: projectRoot,
     maxBuffer: 16 * 1024 * 1024,
   });
 

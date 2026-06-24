@@ -19,7 +19,7 @@
     "batch_size": 200
   },
   "extractor": {
-    "image_thumbnail_size": 378,
+    "image_thumbnail_size": 224,
     "video_strategy": "storyboard",
     "allow_network_access": true
   },
@@ -33,16 +33,25 @@
     "album_write_mode": "replace",
     "write_to_photos_results_album": true
   },
+  "telegram": {
+    "enabled": false,
+    "bot_token": "",
+    "allowed_chat_ids": [],
+    "poll_timeout_seconds": 30,
+    "poll_retry_delay_ms": 3000,
+    "reply_result_limit": 5,
+    "offset_store_path": ".data/telegram-offset.json"
+  },
   "embedding": {
     "provider": "open-clip",
-    "candidate_preset": "fallback-strong",
-    "model": "ViT-H-14-378-quickgelu",
-    "pretrained": "dfn5b",
+    "candidate_preset": "baseline",
+    "model": "ViT-B-32",
+    "pretrained": "laion2b_s34b_b79k",
     "device": "auto",
-    "target_resolution": 378,
+    "target_resolution": 224,
     "normalize": true,
-    "batch_size": 2,
-    "benchmark_batch_size": 2,
+    "batch_size": 8,
+    "benchmark_batch_size": 8,
     "benchmark_asset_limit": 50
   },
   "debug": {

@@ -11,7 +11,7 @@
     "cli": "node ./src/cli/main.js",
     "config:sync-sample": "node ./scripts/sync-config-sample.js",
     "config:check-sample": "node ./scripts/sync-config-sample.js --check",
-    "test:storage": "npm run config:check-sample && node --test tests/storage-repositories.test.js",
+    "test:storage": "npm run config:check-sample && node --test tests/storage-repositories.test.js tests/telegram-bot.test.js",
     "verify:storage": "npm run test:storage && node ./src/cli/main.js init --force",
     "verify:index-cache": "npm run test:storage && node ./scripts/verify-index-cache.js",
     "verify:embedding": "node ./scripts/verify-embedding.js",

@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { loadProjectEnv } from "../src/shared/utils/project-env.js";
+import { resolveProjectRoot } from "../src/shared/utils/project-paths.js";
+
+loadProjectEnv();
+const projectRoot = resolveProjectRoot();
 
 function runCommand(command, args) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    cwd: process.cwd(),
+    cwd: projectRoot,
   });
 
   if (result.stdout) {

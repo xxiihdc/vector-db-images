@@ -23,6 +23,8 @@
     "reindex": "node ./src/cli/main.js reindex",
     "search": "node ./src/cli/main.js search",
     "serve": "node ./src/cli/main.js serve",
+    "launch": "node ./src/cli/main.js launch",
+    "shortcut:launch": "zsh ./scripts/mvi-shortcut-wrapper.sh",
     "photos:check": "node ./src/cli/main.js photos check",
     "photos:request-access": "node ./src/cli/main.js photos request-access",
     "photos:debug": "node ./src/cli/main.js photos debug",

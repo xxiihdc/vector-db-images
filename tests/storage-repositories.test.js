@@ -903,12 +903,12 @@ test("qdrant vector repository prefers scoped collection over legacy base collec
 
   qdrant.state.collections.set("media-index", {
     name: "media-index",
-    size: 4,
+    size: 3,
     distance: "Cosine",
   });
   qdrant.state.collections.set(scopedCollectionName, {
     name: scopedCollectionName,
-    size: 4,
+    size: 3,
     distance: "Cosine",
   });
   qdrant.state.pointsByCollection.set(
@@ -963,6 +963,136 @@ test("qdrant vector repository prefers scoped collection over legacy base collec
   assert.equal(hits[0].embedding.embedding_id, scopedEmbedding.embedding_id);
   assert.equal(legacyScrollCalls.length, 0);
   assert.equal(scopedQueryCalls.length, 1);
+});
+
+test("qdrant vector repository prefers the richer legacy base collection when it has more matching embeddings", async () => {
+  const qdrant = createMockQdrantFetch();
+  const repository = createVectorRepository({
+    backend: "qdrant",
+    serviceUrl: "http://127.0.0.1:6333",
+    collectionName: "media-index",
+    distance: "cosine",
+    fetchFn: qdrant.fetchFn,
+  });
+  const modelIdentity = "open-clip:ViT-B-32:laion2b_s34b_b79k";
+  const scopedCollectionName =
+    "media-index--open-clip-vit-b-32-laion2b-s34b-b79k--12da2b6ea473";
+  const baseEmbeddingA = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-base-richer-a",
+    local_identifier: "QDRANT/BASE/RICHER/A",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-base-richer-a",
+    indexed_at: "2026-06-18T10:00:00.000Z",
+  });
+  const baseEmbeddingB = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-base-richer-b",
+    local_identifier: "QDRANT/BASE/RICHER/B",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-base-richer-b",
+    indexed_at: "2026-06-18T10:00:01.000Z",
+  });
+  const scopedEmbedding = buildEmbeddingRecord({
+    asset_id: "asset:qdrant-scoped-thinner",
+    local_identifier: "QDRANT/SCOPED/THINNER",
+    representation_kind: "image-thumbnail",
+    embedding_provider: "open-clip",
+    embedding_model: "ViT-B-32",
+    model_identity: modelIdentity,
+    source_fingerprint: "fp:qdrant-scoped-thinner",
+    indexed_at: "2026-06-18T10:00:02.000Z",
+  });
+  const basePointIdA = baseEmbeddingA.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+  const basePointIdB = baseEmbeddingB.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+  const scopedPointId = scopedEmbedding.embedding_id
+    .replace(/^[^:]+:/, "")
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 32)
+    .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/, "$1-$2-$3-$4-$5");
+
+  qdrant.state.collections.set("media-index", {
+    name: "media-index",
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.collections.set(scopedCollectionName, {
+    name: scopedCollectionName,
+    size: 4,
+    distance: "Cosine",
+  });
+  qdrant.state.pointsByCollection.set(
+    "media-index",
+    new Map([
+      [
+        basePointIdA,
+        {
+          id: basePointIdA,
+          vector: [1, 0, 0],
+          payload: structuredClone(baseEmbeddingA),
+        },
+      ],
+      [
+        basePointIdB,
+        {
+          id: basePointIdB,
+          vector: [0.95, 0, 0],
+          payload: structuredClone(baseEmbeddingB),
+        },
+      ],
+    ])
+  );
+  qdrant.state.pointsByCollection.set(
+    scopedCollectionName,
+    new Map([
+      [
+        scopedPointId,
+        {
+          id: scopedPointId,
+          vector: [1, 0, 0],
+          payload: structuredClone(scopedEmbedding),
+        },
+      ],
+    ])
+  );
+
+  await repository.initialize();
+
+  const hits = await repository.searchByVector({
+    vector: [1, 0, 0],
+    embedding_model: "ViT-B-32",
+    model_identity: modelIdentity,
+    representation_kinds: ["image-thumbnail"],
+    limit: 5,
+  });
+  const baseQueryCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      call.pathname === "/collections/media-index/points/query"
+  );
+  const scopedQueryCalls = qdrant.state.calls.filter(
+    (call) =>
+      call.method === "POST" &&
+      call.pathname === `/collections/${scopedCollectionName}/points/query`
+  );
+
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].embedding.embedding_id, baseEmbeddingA.embedding_id);
+  assert.equal(hits[1].embedding.embedding_id, baseEmbeddingB.embedding_id);
+  assert.equal(baseQueryCalls.length, 1);
+  assert.equal(scopedQueryCalls.length, 0);
 });
 
 test("qdrant vector repository pushes search filters down to scoped query payload", async () => {

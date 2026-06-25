@@ -102,6 +102,7 @@ src/
 
 - `src/cli/`
   - owns command entrypoints, argument parsing, and output formatting
+  - may expose thin wrapper commands that coordinate multiple retrieval surfaces without moving orchestration into UI-specific layers
   - calls into lower layers but should not absorb media-processing rules
 
 - `src/app/`
@@ -111,6 +112,7 @@ src/
 - `src/config/`
   - owns project config loading, defaults, validation, and path resolution
   - honors `MVI_PROJECT_ROOT` as an optional repo-root override for CLI/script entrypoints
+  - merges ignored local Telegram overrides from `telegram.config.json` on top of the base project config when present
   - keeps runtime settings outside the five core layers
 
 - `src/scanner/`

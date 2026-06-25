@@ -121,10 +121,52 @@ Sau đó mở `http://127.0.0.1:4173`.
 
 ### Chạy Telegram bot bằng long polling
 
-Bật `telegram.enabled`, điền `telegram.bot_token`, và thêm `telegram.allowed_chat_ids` trong `media-vector-index.config.json`, rồi chạy:
+Tạo file local từ mẫu:
+
+```bash
+cp telegram.config.example.json telegram.config.json
+```
+
+Sau đó điền `bot_token` và `allowed_chat_ids` trong `telegram.config.json`, rồi chạy:
 
 ```bash
 node ./src/cli/main.js telegram listen
+```
+
+### Chạy wrapper chung cho web và Telegram
+
+Wrapper mới giúp bật web search và Telegram long polling bằng một lệnh foreground duy nhất, tiện để gán vào Apple Shortcut.
+
+Mặc định, nếu không truyền cờ nào thì wrapper sẽ bật cả hai:
+
+```bash
+node ./src/cli/main.js launch
+```
+
+Chỉ bật web:
+
+```bash
+node ./src/cli/main.js launch --web --port 4173
+```
+
+Chỉ bật Telegram long polling:
+
+```bash
+node ./src/cli/main.js launch --tele
+```
+
+Nếu muốn Apple Shortcut gọi một file wrapper ổn định thay vì nhớ nguyên lệnh Node, dùng:
+
+```bash
+zsh /absolute/path/to/VectorDBImage/scripts/mvi-shortcut-wrapper.sh
+```
+
+Ví dụ cho Shortcut:
+
+```bash
+zsh /absolute/path/to/VectorDBImage/scripts/mvi-shortcut-wrapper.sh --web
+zsh /absolute/path/to/VectorDBImage/scripts/mvi-shortcut-wrapper.sh --tele
+zsh /absolute/path/to/VectorDBImage/scripts/mvi-shortcut-wrapper.sh
 ```
 
 Bot hiện hỗ trợ:
@@ -134,6 +176,7 @@ Bot hiện hỗ trợ:
 - plain text message như text query
 - cập nhật `AI Search Results` trong Photos bằng đúng shared search workflow hiện có
 - lưu `update_id` tại `telegram.offset_store_path` để restart không xử lý lại message cũ
+- `telegram.config.json` được ignore khỏi git; commit `telegram.config.example.json` để chia sẻ cấu trúc mẫu
 
 ## Command reference
 
@@ -147,6 +190,7 @@ node ./src/cli/main.js search "<query>" [--limit 50] [--skip-album]
 node ./src/cli/main.js search image /absolute/path/to/image.jpg [--limit 50] [--skip-album]
 node ./src/cli/main.js index file /absolute/path/to/image.jpg
 node ./src/cli/main.js serve [--port 4173]
+node ./src/cli/main.js launch [--web] [--tele] [--port 4173]
 node ./src/cli/main.js telegram listen
 node ./src/cli/main.js storage vector-check
 ```
@@ -227,6 +271,7 @@ Những field đáng chú ý:
 - `telegram.bot_token`: bot token từ BotFather
 - `telegram.allowed_chat_ids`: allowlist chat id được phép dùng bot
 - `telegram.offset_store_path`: file lưu `update_id` đã xử lý để restart không bị đọc lại
+- `telegram.config.json`: file local override riêng cho section `telegram`; nếu tồn tại sẽ được merge đè lên `media-vector-index.config.json`
 - `embedding.candidate_preset`: preset rung đang active, ví dụ `baseline` hoặc `fallback-safe`
 - `embedding.provider`, `embedding.model`, `embedding.pretrained`: model setup hiện tại
 - `embedding.target_resolution`: resolution phải đi cùng model hiện tại để benchmark/reindex fair

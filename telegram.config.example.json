@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "bot_token": "123456789:replace-with-bot-token",
+  "allowed_chat_ids": [
+    "replace-with-chat-id"
+  ],
+  "poll_timeout_seconds": 30,
+  "poll_retry_delay_ms": 3000,
+  "reply_result_limit": 5,
+  "offset_store_path": ".data/telegram-offset.json"
+}

@@ -428,17 +428,79 @@ export function createQdrantVectorRepository({
     return collectionNames.filter((name) => isManagedCollectionName(name));
   }
 
+  async function countEmbeddingsInCollection(targetCollectionName, filters = {}) {
+    const collection = await getCollectionInfo(targetCollectionName);
+
+    if (!collection) {
+      return 0;
+    }
+
+    const response = await retryVectorRead(() =>
+      client.countPoints(targetCollectionName, {
+        exact: true,
+        filter: buildPayloadFilter(filters),
+      })
+    );
+
+    return extractCount(response);
+  }
+
+  async function choosePreferredReadCollectionName(
+    candidateCollectionNames,
+    { modelIdentity = null } = {}
+  ) {
+    if (!Array.isArray(candidateCollectionNames) || candidateCollectionNames.length <= 1) {
+      return candidateCollectionNames[0] ?? null;
+    }
+
+    let preferredCollectionName = candidateCollectionNames[0];
+    let preferredCount = -1;
+
+    for (const candidateCollectionName of candidateCollectionNames) {
+      const candidateCount = await countEmbeddingsInCollection(candidateCollectionName, {
+        model_identity: modelIdentity,
+      });
+
+      if (candidateCount > preferredCount) {
+        preferredCollectionName = candidateCollectionName;
+        preferredCount = candidateCount;
+        continue;
+      }
+
+      if (
+        candidateCount === preferredCount &&
+        candidateCollectionName ===
+          buildScopedCollectionName(collectionName, modelIdentity)
+      ) {
+        preferredCollectionName = candidateCollectionName;
+      }
+    }
+
+    return preferredCollectionName;
+  }
+
   async function resolveReadCollectionNames(modelIdentity = null) {
     const preferredCollectionName = buildScopedCollectionName(collectionName, modelIdentity);
     const existingManagedCollections = await listManagedCollectionNames();
 
     if (modelIdentity) {
+      const candidateCollectionNames = [];
+
       if (existingManagedCollections.includes(preferredCollectionName)) {
-        return [preferredCollectionName];
+        candidateCollectionNames.push(preferredCollectionName);
       }
 
       if (existingManagedCollections.includes(collectionName)) {
-        return [collectionName];
+        candidateCollectionNames.push(collectionName);
+      }
+
+      if (candidateCollectionNames.length > 0) {
+        const preferredReadCollectionName = await choosePreferredReadCollectionName(
+          candidateCollectionNames,
+          { modelIdentity }
+        );
+
+        return preferredReadCollectionName ? [preferredReadCollectionName] : candidateCollectionNames;
       }
 
       return [preferredCollectionName];

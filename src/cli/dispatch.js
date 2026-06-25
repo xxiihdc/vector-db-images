@@ -13,6 +13,7 @@ import { runIndexCommand } from "./commands/index.js";
 import { runReindexCommand } from "./commands/reindex.js";
 import { runSearchCommand } from "./commands/search.js";
 import { runServeCommand } from "./commands/serve.js";
+import { runLaunchCommand } from "./commands/launch.js";
 import { runStorageVectorCheckCommand } from "./commands/storage-vector-check.js";
 import { runTelegramListenCommand } from "./commands/telegram-listen.js";
 import { AppError } from "../shared/errors/app-error.js";
@@ -43,6 +44,14 @@ export async function dispatchCliCommand(argv, options = {}) {
 
   if (command === "serve") {
     return runServeCommand({ cwd, args: [subcommand, ...rest].filter(Boolean) });
+  }
+
+  if (command === "launch") {
+    return runLaunchCommand({
+      cwd,
+      args: [subcommand, ...rest].filter(Boolean),
+      signal,
+    });
   }
 
   if (command === "telegram" && subcommand === "listen") {

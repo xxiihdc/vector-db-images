@@ -4,8 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { DEFAULT_CONFIG } from "../src/config/defaults/config.js";
+import { loadConfig } from "../src/config/load-config.js";
 import { validateConfig } from "../src/config/schema/config-schema.js";
 import { dispatchCliCommand } from "../src/cli/dispatch.js";
+import { runLaunchCommand } from "../src/cli/commands/launch.js";
 import { buildTelegramHelpReply, formatTelegramSearchReply } from "../src/app/telegram/formatters.js";
 import {
   handleTelegramUpdate,
@@ -56,6 +58,95 @@ test("CLI dispatch rejects an unknown telegram subcommand", async () => {
     () => dispatchCliCommand(["telegram", "nope"], { cwd: "/tmp/mvi" }),
     (error) => {
       assert.equal(error.code, "CLI_UNKNOWN_COMMAND");
+      return true;
+    }
+  );
+});
+
+test("launch wrapper enables both web and telegram by default", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const calls = [];
+  let serverClosed = false;
+
+  const result = await runLaunchCommand({
+    cwd: "/tmp/mvi",
+    signal: controller.signal,
+    startSearchWebServerFn: async ({ host, port }) => {
+      calls.push({ type: "web", host, port });
+      return {
+        server: {
+          listening: true,
+          close(callback) {
+            serverClosed = true;
+            callback();
+          },
+        },
+        address: {
+          host,
+          port,
+          url: `http://${host}:${port}`,
+        },
+      };
+    },
+    runTelegramLongPollListenerFn: async ({ cwd, signal }) => {
+      calls.push({ type: "tele", cwd, aborted: signal?.aborted === true });
+      return {
+        processed_update_count: 0,
+      };
+    },
+  });
+
+  assert.deepEqual(result.enabled_surfaces, {
+    web: true,
+    tele: true,
+  });
+  assert.equal(result.port, 4173);
+  assert.equal(serverClosed, true);
+  assert.deepEqual(calls, [
+    { type: "web", host: "127.0.0.1", port: 4173 },
+    { type: "tele", cwd: "/tmp/mvi", aborted: true },
+  ]);
+});
+
+test("launch wrapper can run only the web surface", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let telegramCalled = false;
+
+  const result = await runLaunchCommand({
+    cwd: "/tmp/mvi",
+    args: ["--web", "--port", "4300"],
+    signal: controller.signal,
+    startSearchWebServerFn: async ({ host, port }) => ({
+      server: {
+        listening: false,
+      },
+      address: {
+        host,
+        port,
+        url: `http://${host}:${port}`,
+      },
+    }),
+    runTelegramLongPollListenerFn: async () => {
+      telegramCalled = true;
+      return null;
+    },
+  });
+
+  assert.deepEqual(result.enabled_surfaces, {
+    web: true,
+    tele: false,
+  });
+  assert.equal(result.url, "http://127.0.0.1:4300");
+  assert.equal(telegramCalled, false);
+});
+
+test("launch wrapper validates the port flag", async () => {
+  await assert.rejects(
+    () => runLaunchCommand({ cwd: "/tmp/mvi", args: ["--port", "70000"] }),
+    (error) => {
+      assert.equal(error.code, "WRAPPER_PORT_INVALID");
       return true;
     }
   );
@@ -469,5 +560,40 @@ test("Telegram offset store reads and writes next update offsets", async () => {
     assert.equal(await store.readOffset(), null);
     await store.writeOffset(42);
     assert.equal(await store.readOffset(), 42);
+  });
+});
+
+test("loadConfig merges telegram.config.json over the base project config", async () => {
+  await withTempDir(async (tempDir) => {
+    const baseConfig = structuredClone(DEFAULT_CONFIG);
+
+    await writeFile(
+      path.join(tempDir, "media-vector-index.config.json"),
+      `${JSON.stringify(baseConfig, null, 2)}\n`,
+      "utf8"
+    );
+    await writeFile(
+      path.join(tempDir, "telegram.config.json"),
+      `${JSON.stringify(
+        {
+          enabled: true,
+          bot_token: "bot-token",
+          allowed_chat_ids: ["123"],
+          reply_result_limit: 9,
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const configState = await loadConfig(tempDir);
+
+    assert.equal(configState.telegramConfigExists, true);
+    assert.equal(configState.config.telegram.enabled, true);
+    assert.equal(configState.config.telegram.bot_token, "bot-token");
+    assert.deepEqual(configState.config.telegram.allowed_chat_ids, ["123"]);
+    assert.equal(configState.config.telegram.reply_result_limit, 9);
+    assert.equal(configState.config.telegram.poll_timeout_seconds, 30);
   });
 });

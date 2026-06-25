@@ -20,6 +20,7 @@ The project needs a local CLI-first workflow that can search a Photos library se
 5. let the user search in natural language from Terminal
 6. push matching assets into a Photos album so review happens in the native app
 7. optionally let a Telegram bot trigger the same local search workflow while the Mac is running
+8. optionally let a single wrapper command start the local web page and/or Telegram long polling for automation tools such as Apple Shortcuts
 
 ## Must-Have Retrieval Output
 
@@ -43,8 +44,9 @@ Each result should eventually be able to return:
 8. Apple Photos on macOS is the only supported source of truth; originals may reside in iCloud.
 9. Runtime code organization starts with explicit folders for `scanner`, `extractor`, `enrichment`, `indexer`, and `retriever`, with CLI/config/storage concerns kept separate.
 10. Runtime setup starts with one local config file, `media-vector-index.config.json`, instead of multiple env-driven surfaces.
-11. A single optional env override, `MVI_PROJECT_ROOT`, may point commands back to the repo root when the shell is launched from another directory.
-12. The primary runtime shape is `Node.js CLI + Python photos-bridge`, where the Python bridge owns all direct Photos framework access through PyObjC.
+11. Telegram bot secrets and allowlist may live in a separate ignored local file, `telegram.config.json`, layered on top of the base project config.
+12. A single optional env override, `MVI_PROJECT_ROOT`, may point commands back to the repo root when the shell is launched from another directory.
+13. The primary runtime shape is `Node.js CLI + Python photos-bridge`, where the Python bridge owns all direct Photos framework access through PyObjC.
 
 ## Retrieval Surface Decision
 

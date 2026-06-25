@@ -5,6 +5,7 @@ import {
 } from "../../embedding/providers/open-clip/model-candidates.js";
 
 export const DEFAULT_CONFIG_FILE_NAME = "media-vector-index.config.json";
+export const TELEGRAM_CONFIG_FILE_NAME = "telegram.config.json";
 
 export const DEFAULT_CONFIG = Object.freeze({
   schema_version: 1,
